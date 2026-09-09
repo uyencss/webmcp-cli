@@ -1,12 +1,17 @@
 import assert from 'node:assert/strict';
 import { spawnSync } from 'node:child_process';
+import { existsSync } from 'node:fs';
 import path from 'node:path';
 import test from 'node:test';
 import { fileURLToPath } from 'node:url';
 
 const PKG_ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const BIN = path.join(PKG_ROOT, 'bin', 'webmcp-cli.mjs');
-const BROWSER_BIN = path.resolve(PKG_ROOT, '..', 'browser', 'bin', 'webmcp.mjs');
+const CANDIDATE_BROWSER_BIN = path.resolve(PKG_ROOT, '..', 'browser', 'bin', 'webmcp.mjs');
+const AUTHORITATIVE_BROWSER_BIN = path.resolve(PKG_ROOT, '..', 'webmcp-browser-kit', 'bin', 'webmcp.mjs');
+const BROWSER_BIN =
+  [CANDIDATE_BROWSER_BIN, AUTHORITATIVE_BROWSER_BIN].find((candidate) => existsSync(candidate)) ??
+  CANDIDATE_BROWSER_BIN;
 
 function run(args, { input = undefined, env = {}, timeout = 15000 } = {}) {
   return spawnSync(process.execPath, [BIN, ...args], {
