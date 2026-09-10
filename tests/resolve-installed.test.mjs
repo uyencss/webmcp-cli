@@ -7,6 +7,7 @@ import {
   readFileSync,
   rmSync,
   mkdirSync,
+  symlinkSync,
   writeFileSync,
 } from 'node:fs';
 import { tmpdir } from 'node:os';
@@ -260,6 +261,163 @@ test('path-escape manifest entries resolve null', (t) => {
     null,
     'absolute escape must be null',
   );
+});
+
+test('traversal inside the release root is rejected even when the escape destination exists', (t) => {
+  function buildTraversalRoot() {
+    const root = mkdtempSync(path.join(tmpdir(), 'webmcp-installed-traversal-'));
+    writeExecutable(path.join(root, 'payload', 'webmcp-browser-kit', 'webmcp-browser.mjs'), '#!/usr/bin/env node\n');
+    // Sibling-component sentinel that EXISTS and is executable.
+    writeExecutable(
+      path.join(root, 'payload', 'webmcp-browser-kit', 'bin', 'sentinel.mjs'),
+      '#!/usr/bin/env node\nconsole.log("sibling-sentinel");\n',
+    );
+    // Valid file inside the ai component dir (proves dot/empty-segment rejection).
+    writeExecutable(
+      path.join(root, 'payload', 'webmcp-ai-cli', 'bin', 'valid.mjs'),
+      '#!/usr/bin/env node\nconsole.log("valid");\n',
+    );
+    return root;
+  }
+  function resolveAiWithTarget(root, target) {
+    const manifest = {
+      schema: 'webmcp-runtime-release/2',
+      components: [
+        { id: 'webmcp-browser-kit', publicBins: { 'webmcp-browser': 'webmcp-browser.mjs' } },
+        { id: 'webmcp-ai-cli', publicBins: { 'webmcp-ai': target } },
+      ],
+    };
+    const manifestPath = path.join(root, 'release.json');
+    writeFileSync(manifestPath, JSON.stringify(manifest));
+    return resolveComponentBin('ai', {
+      env: installedEnv(manifestPath),
+      cwd: '/tmp',
+      packageRoot: PACKAGE_ROOT,
+    });
+  }
+  // Case 1: sibling-payload escape via `..` — destination EXISTS.
+  {
+    const root = buildTraversalRoot();
+    t.after(() => rmSync(root, { recursive: true, force: true }));
+    const sibling = path.join(root, 'payload', 'webmcp-browser-kit', 'bin', 'sentinel.mjs');
+    assert.ok(existsSync(sibling), 'sibling sentinel must exist to prove the guard, not existence');
+    // Use a fresh root per case to avoid the per-process manifest cache.
+    const caseRoot = buildTraversalRoot();
+    t.after(() => rmSync(caseRoot, { recursive: true, force: true }));
+    const caseSibling = path.join(caseRoot, 'payload', 'webmcp-browser-kit', 'bin', 'sentinel.mjs');
+    assert.ok(existsSync(caseSibling));
+    assert.equal(
+      resolveAiWithTarget(caseRoot, '../webmcp-browser-kit/bin/sentinel.mjs'),
+      null,
+      'sibling-payload escape must be null even though the destination exists',
+    );
+  }
+  // Case 2: release-root escape via `../..` — release.json EXISTS.
+  {
+    const caseRoot = buildTraversalRoot();
+    t.after(() => rmSync(caseRoot, { recursive: true, force: true }));
+    // Write a placeholder manifest first so release.json exists as an escape destination,
+    // then overwrite with the evil target (fresh path per write avoids cache staleness).
+    writeFileSync(path.join(caseRoot, 'release.json'), JSON.stringify({ schema: 'webmcp-runtime-release/2', components: [] }));
+    assert.ok(existsSync(path.join(caseRoot, 'release.json')), 'release.json sentinel must exist');
+    assert.equal(
+      resolveAiWithTarget(caseRoot, '../../release.json'),
+      null,
+      '../../release.json escape must be null even though release.json exists',
+    );
+  }
+  // Case 3: dot / empty-segment targets that resolve inside but must still be rejected.
+  {
+    const dotTargets = [
+      './bin/valid.mjs',
+      'bin/./valid.mjs',
+      'bin//valid.mjs',
+      'sub/../bin/valid.mjs',
+    ];
+    for (const target of dotTargets) {
+      const caseRoot = buildTraversalRoot();
+      t.after(() => rmSync(caseRoot, { recursive: true, force: true }));
+      const lexicalDest = path.join(caseRoot, 'payload', 'webmcp-ai-cli', 'bin', 'valid.mjs');
+      assert.ok(existsSync(lexicalDest), `lexical destination must exist for ${target}`);
+      assert.equal(
+        resolveAiWithTarget(caseRoot, target),
+        null,
+        `dot/empty-segment target ${JSON.stringify(target)} must be null even though it resolves to an existing file`,
+      );
+    }
+  }
+});
+
+test('symlink escape inside the component payload resolves null', (t) => {
+  const root = mkdtempSync(path.join(tmpdir(), 'webmcp-installed-symlink-'));
+  t.after(() => rmSync(root, { recursive: true, force: true }));
+  writeExecutable(path.join(root, 'payload', 'webmcp-browser-kit', 'webmcp-browser.mjs'), '#!/usr/bin/env node\n');
+  const outsideDir = mkdtempSync(path.join(tmpdir(), 'webmcp-installed-outside-'));
+  t.after(() => rmSync(outsideDir, { recursive: true, force: true }));
+  const outsideEvil = path.join(outsideDir, 'evil.mjs');
+  writeExecutable(outsideEvil, '#!/usr/bin/env node\nconsole.log("outside");\n');
+  assert.ok(existsSync(outsideEvil));
+  const linkPath = path.join(root, 'payload', 'webmcp-ai-cli', 'link-outside');
+  mkdirSync(path.dirname(linkPath), { recursive: true });
+  try {
+    symlinkSync(outsideDir, linkPath, 'dir');
+  } catch (error) {
+    t.skip(`symlink not permitted on this platform: ${error && error.message ? error.message : error}`);
+    return;
+  }
+  const candidateViaLink = path.join(linkPath, 'evil.mjs');
+  assert.ok(existsSync(candidateViaLink), 'symlink destination must exist via the link (follows symlink)');
+  const manifest = {
+    schema: 'webmcp-runtime-release/2',
+    components: [
+      { id: 'webmcp-browser-kit', publicBins: { 'webmcp-browser': 'webmcp-browser.mjs' } },
+      { id: 'webmcp-ai-cli', publicBins: { 'webmcp-ai': 'link-outside/evil.mjs' } },
+    ],
+  };
+  const manifestPath = path.join(root, 'release.json');
+  writeFileSync(manifestPath, JSON.stringify(manifest));
+  assert.equal(
+    resolveComponentBin('ai', { env: installedEnv(manifestPath), cwd: '/tmp', packageRoot: PACKAGE_ROOT }),
+    null,
+    'symlink escape must be null even though the linked file exists',
+  );
+});
+
+test('main() with injected installed env emits typed installed-manifest message, not dev npm advice', async (t) => {
+  const { main } = await import('../lib/main.mjs');
+  const badRoot = mkdtempSync(path.join(tmpdir(), 'webmcp-installed-mainmsg-'));
+  t.after(() => rmSync(badRoot, { recursive: true, force: true }));
+  const badPath = path.join(badRoot, 'release.json');
+  writeFileSync(badPath, '{ not json{{{');
+  const env = { WEBMCP_RUNTIME_MANIFEST: badPath };
+  const runChild = async () => { throw new Error('delegate must not run when the bin is missing'); };
+  async function captureMain(args) {
+    const errors = [];
+    const origErr = console.error;
+    console.error = (...a) => { errors.push(a.join(' ')); };
+    try {
+      const code = await main(args, { env, runChild });
+      return { code, stderr: errors.join('\n') };
+    } finally {
+      console.error = origErr;
+    }
+  }
+  const browser = await captureMain(['mcp', '--help']);
+  assert.equal(browser.code, 1, 'browser route with invalid manifest must fail');
+  assert.match(browser.stderr, /installed release manifest is invalid/i, 'browser must emit installed-manifest message');
+  assert.match(browser.stderr, /installed mode/, 'browser must say installed mode');
+  assert.doesNotMatch(browser.stderr, /WEBMCP_BROWSER_BIN/, 'browser must not emit dev override advice');
+  assert.doesNotMatch(browser.stderr, /install @gyga-browser\/webmcp-browser-automation-kit/, 'browser must not emit dev npm advice');
+  const ai = await captureMain(['ai']);
+  assert.equal(ai.code, 1, 'ai route with invalid manifest must fail');
+  assert.match(ai.stderr, /installed release manifest is invalid/i, 'ai must emit installed-manifest message');
+  assert.match(ai.stderr, /installed mode/, 'ai must say installed mode');
+  assert.doesNotMatch(ai.stderr, /WEBMCP_AI_BIN/, 'ai must not emit dev override advice');
+  const kit = await captureMain(['project-kit']);
+  assert.equal(kit.code, 1, 'project-kit route with invalid manifest must fail');
+  assert.match(kit.stderr, /installed release manifest is invalid/i, 'kit must emit installed-manifest message');
+  assert.match(kit.stderr, /installed mode/, 'kit must say installed mode');
+  assert.doesNotMatch(kit.stderr, /WEBMCP_PROJECT_KIT_BIN/, 'kit must not emit dev override advice');
 });
 
 test('end-to-end subprocess uses the fixture browser bin in installed mode', (t) => {
