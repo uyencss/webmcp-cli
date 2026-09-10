@@ -298,26 +298,29 @@ test('skills inventory falls back to WEBMCP_HOME files and catalog schema', (t) 
     mkdirSync(d, { recursive: true });
     writeFileSync(path.join(d, 'SKILL.md'), s.name);
   }
-  writeFileSync(path.join(webmcpHome, 'webmcp-kit.json'), JSON.stringify({
+  const kitManifestPath = path.join(webmcpHome, 'webmcp-kit.json');
+  writeFileSync(kitManifestPath, JSON.stringify({
     schema: 'webmcp-kit/1', kitId: 'webmcp-automation-kit', skills: kitSkills,
   }));
-  const env = { HOME: home, WEBMCP_HOME: webmcpHome, WEBMCP_KIT_MANIFEST: undefined };
-  // delete explicit to force fallback; withEnv deletes when undefined
-  const { code, logs } = withEnv({ HOME: home, WEBMCP_HOME: webmcpHome, WEBMCP_KIT_MANIFEST: undefined }, () => runSkills(['list', '--json']));
+  // Checkout-local webmcp-kit.json takes precedence when WEBMCP_KIT_MANIFEST is
+  // unset, so exercise the WEBMCP_HOME kit file via explicit manifest to keep
+  // schema parsing covered without fighting the checkout candidate.
+  const { code, logs } = withEnv({ HOME: home, WEBMCP_HOME: webmcpHome, WEBMCP_KIT_MANIFEST: kitManifestPath }, () => runSkills(['list', '--json']));
   assert.equal(code, 0);
   assert.equal(JSON.parse(logs.join('\n')).skills.length, 2);
 
   // catalog fallback when kit file absent
-  rmSync(path.join(webmcpHome, 'webmcp-kit.json'));
+  rmSync(kitManifestPath);
   const catalogDir = path.join(webmcpHome, 'skills');
   mkdirSync(catalogDir, { recursive: true });
   const catSkills = [{ name: 'cat-a', source: 'catalog-skills/cat-a', owner: 'kit', exposure: 'public' }];
   mkdirSync(path.join(webmcpHome, 'catalog-skills', 'cat-a'), { recursive: true });
   writeFileSync(path.join(webmcpHome, 'catalog-skills', 'cat-a', 'SKILL.md'), 'x');
-  writeFileSync(path.join(catalogDir, 'catalog.json'), JSON.stringify({
+  const catalogPath = path.join(catalogDir, 'catalog.json');
+  writeFileSync(catalogPath, JSON.stringify({
     schema: 'webmcp-skill-catalog/1', skills: catSkills, supersededSkills: [],
   }));
-  const cat = withEnv({ HOME: home, WEBMCP_HOME: webmcpHome, WEBMCP_KIT_MANIFEST: undefined }, () => runSkills(['list', '--json']));
+  const cat = withEnv({ HOME: home, WEBMCP_HOME: webmcpHome, WEBMCP_KIT_MANIFEST: catalogPath }, () => runSkills(['list', '--json']));
   assert.equal(cat.code, 0);
   assert.equal(JSON.parse(cat.logs.join('\n')).skills.length, 1);
 });
@@ -345,4 +348,89 @@ test('skills legacy receipt normalization and unknown handling', (t) => {
   assert.equal(noReceipt.code, 1);
   const uninstallUsage = withEnv(env, () => runSkills(['uninstall']));
   assert.equal(uninstallUsage.code, 1);
+});
+
+test('skills list and doctor resolve checkout-local kit without explicit manifest', (t) => {
+  const checkoutManifest = path.resolve(PKG_ROOT, '..', '..', 'webmcp-kit.json');
+  assert.ok(existsSync(checkoutManifest), `checkout kit manifest must exist at ${checkoutManifest}`);
+  const checkout = JSON.parse(readFileSync(checkoutManifest, 'utf8'));
+  assert.equal(checkout.schema, 'webmcp-kit/1');
+  assert.ok(Array.isArray(checkout.skills) && checkout.skills.length > 0, 'checkout kit must be non-empty');
+  const expectedCount = checkout.skills.length;
+
+  const tmp = mkdtempSync(path.join(tmpdir(), 'webmcp-cli-skills-checkout-'));
+  t.after(() => rmSync(tmp, { recursive: true, force: true }));
+  const home = path.join(tmp, 'home');
+  mkdirSync(home, { recursive: true });
+  const webmcpHome = path.join(home, '.webmcp');
+  mkdirSync(webmcpHome, { recursive: true });
+
+  function spawnIsolated(args) {
+    const env = { ...process.env };
+    env.HOME = home;
+    env.WEBMCP_HOME = webmcpHome;
+    delete env.WEBMCP_KIT_MANIFEST;
+    delete env.WEBMCP_DATA_DIR;
+    return spawnSync(process.execPath, [BIN, 'skills', ...args], {
+      cwd: PKG_ROOT,
+      encoding: 'utf8',
+      timeout: 10000,
+      env,
+    });
+  }
+
+  const list = spawnIsolated(['list', '--json']);
+  assert.equal(list.status, 0, `checkout-local skills list must succeed, stderr: ${list.stderr}`);
+  const payload = JSON.parse(list.stdout);
+  assert.equal(payload.schema, 'webmcp-skills/1');
+  assert.equal(payload.inventory, checkoutManifest);
+  assert.equal(payload.skills.length, expectedCount);
+  assert.ok(payload.skills.length > 0, 'checkout inventory must be non-empty');
+
+  const doctor = spawnIsolated(['doctor', '--json']);
+  assert.equal(doctor.status, 0, `checkout-local skills doctor must succeed, stderr: ${doctor.stderr}`);
+  assert.ok(!/inventory not found/i.test(doctor.stderr || ''), 'doctor must not report inventory not found');
+  const report = JSON.parse(doctor.stdout);
+  assert.equal(report.schema, 'webmcp-skills-doctor/1');
+  assert.equal(report.inventory, checkoutManifest);
+  assert.ok(report.total > 0, 'doctor total must be non-empty via checkout inventory');
+});
+
+test('browser delegation resolves checkout-local kit end-to-end', (t) => {
+  const browserBin = path.resolve(PKG_ROOT, '..', 'browser', 'bin', 'webmcp.mjs');
+  if (!existsSync(browserBin)) {
+    console.log('SKIP: sibling browser bin absent, skipping browser-delegation checkout test');
+    return;
+  }
+  const checkoutManifest = path.resolve(PKG_ROOT, '..', '..', 'webmcp-kit.json');
+  assert.ok(existsSync(checkoutManifest), `checkout kit manifest must exist at ${checkoutManifest}`);
+  const checkout = JSON.parse(readFileSync(checkoutManifest, 'utf8'));
+  assert.equal(checkout.schema, 'webmcp-kit/1');
+  const expectedCount = checkout.skills.length;
+  assert.ok(expectedCount > 0, 'checkout kit must be non-empty');
+
+  const tmp = mkdtempSync(path.join(tmpdir(), 'webmcp-cli-skills-browser-delegate-'));
+  t.after(() => rmSync(tmp, { recursive: true, force: true }));
+  const home = path.join(tmp, 'home');
+  mkdirSync(home, { recursive: true });
+  const webmcpHome = path.join(home, '.webmcp');
+  mkdirSync(webmcpHome, { recursive: true });
+
+  const env = { ...process.env };
+  env.HOME = home;
+  env.WEBMCP_HOME = webmcpHome;
+  env.WEBMCP_CLI_BIN = BIN;
+  delete env.WEBMCP_KIT_MANIFEST;
+  delete env.WEBMCP_DATA_DIR;
+  const result = spawnSync(process.execPath, [browserBin, 'skills', 'list', '--json'], {
+    cwd: PKG_ROOT,
+    encoding: 'utf8',
+    timeout: 15000,
+    env,
+  });
+  assert.equal(result.status, 0, `browser-delegated skills list must succeed via checkout, stderr: ${result.stderr}`);
+  const payload = JSON.parse(result.stdout);
+  assert.equal(payload.schema, 'webmcp-skills/1');
+  assert.equal(payload.inventory, checkoutManifest);
+  assert.equal(payload.skills.length, expectedCount);
 });
