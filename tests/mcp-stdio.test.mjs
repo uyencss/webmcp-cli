@@ -49,3 +49,23 @@ test('MCP handshake over the preview delegate keeps stdout as pure MCP JSON-RPC'
     assert.ok(Array.isArray(tools.result.tools), 'tools/list result must carry a tools array');
   }
 });
+
+test('MCP shutdown closes stdin cleanly with exit 0 and banner-free stdout', () => {
+  const requests = [
+    { jsonrpc: '2.0', id: 1, method: 'initialize', params: { protocolVersion: '2024-11-05', capabilities: {}, clientInfo: { name: 'webmcp-cli-smoke', version: '0.0.0' } } },
+    { jsonrpc: '2.0', method: 'notifications/initialized' },
+    { jsonrpc: '2.0', id: 2, method: 'tools/list', params: {} },
+  ].map((entry) => `${JSON.stringify(entry)}\n`).join('');
+  const result = run(['mcp'], { input: requests, timeout: 20000 });
+  assert.equal(result.error, undefined, `MCP run must not time out: ${String(result.error)}`);
+  assert.equal(result.signal, null, `MCP run must not be killed by a signal: ${result.signal}`);
+  assert.equal(result.status, 0, `MCP must exit 0 after stdin closes: status=${result.status} stderr=${result.stderr}`);
+  const lines = result.stdout.split('\n').filter((line) => line.trim().length > 0);
+  assert.ok(lines.length >= 2, `expected JSON-RPC responses, got stdout=${result.stdout} stderr=${result.stderr}`);
+  for (const [index, line] of lines.entries()) {
+    assert.doesNotThrow(() => JSON.parse(line), `stdout line ${index} is not pure JSON: ${line}`);
+    const parsed = JSON.parse(line);
+    assert.equal(parsed.jsonrpc, '2.0', `stdout line ${index} must stay JSON-RPC: ${line}`);
+  }
+  assert.doesNotMatch(result.stdout, /Usage:|WebMCP CLI|banner/i, 'stdout must never carry banners');
+});
