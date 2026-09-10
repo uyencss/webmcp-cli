@@ -69,8 +69,8 @@ test('SIGTERM to the preview reaches only the direct child and the preview exits
 });
 
 test('preview never imports the Browser CLI tree or a side-effectful MCP server', async () => {
-  const { readFileSync, readdirSync } = await import('node:fs');
-  const ownFiles = ['bin/webmcp-cli.mjs', 'lib/routes.mjs', 'lib/help.mjs', 'lib/resolve.mjs', 'lib/delegate.mjs', 'lib/main.mjs'];
+  const { readFileSync, readdirSync, existsSync } = await import('node:fs');
+  const ownFiles = ['bin/webmcp-cli.mjs', 'lib/routes.mjs', 'lib/help.mjs', 'lib/resolve.mjs', 'lib/delegate.mjs', 'lib/main.mjs', 'lib/context.mjs', 'lib/commands/skills.mjs', 'lib/commands/doctor.mjs'];
   // Public package names and sibling paths in resolution metadata are allowed;
   // actual static/dynamic imports of Browser code are not.
   const bannedImports = [

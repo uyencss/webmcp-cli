@@ -57,18 +57,21 @@ test('help/version/unknown stay local; nothing falls through silently', () => {
   }
   for (const [, descriptor] of ROUTES) {
     assert.ok(
-      ['browser', 'legacy-browser', 'component', 'project-kit'].includes(descriptor.kind),
+      ['browser', 'local', 'component', 'project-kit'].includes(descriptor.kind),
       `route kind must be explicit: ${JSON.stringify(descriptor)}`,
     );
   }
+  for (const [, descriptor] of ROUTES) {
+    assert.notEqual(descriptor.kind, 'legacy-browser', 'legacy-browser kind must be removed');
+  }
 });
 
-test('browser-owned routes delegate direct; legacy adapters stay explicit', () => {
-  for (const command of ['mcp', 'gateway', 'profiles', 'profile-pool', 'launch', 'close', 'quit', 'health', 'call', 'extension-info', 'extension-path']) {
+test('browser-owned routes delegate direct; skills/doctor are CLI-local', () => {
+  for (const command of ['mcp', 'gateway', 'profiles', 'profile-pool', 'launch', 'close', 'quit', 'health', 'call', 'extension-info', 'extension-path', 'bootstrap', 'project']) {
     assert.equal(ROUTES.get(command).kind, 'browser', command);
   }
-  for (const command of ['doctor', 'bootstrap', 'project', 'skills']) {
-    assert.equal(ROUTES.get(command).kind, 'legacy-browser', command);
+  for (const command of ['skills', 'doctor']) {
+    assert.equal(ROUTES.get(command).kind, 'local', command);
   }
 });
 

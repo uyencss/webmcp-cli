@@ -60,7 +60,7 @@ test('delegate maps a signal-killed child to exit 1 with a diagnostic', async (t
   assert.match(errors.join('\n'), /Signalled exited after signal SIGTERM/);
 });
 
-test('local help/version/unknown paths never touch the delegate', async () => {
+test('local help/version/unknown/skills-help/doctor-help paths never touch the delegate', async () => {
   const runChild = async () => { throw new Error('delegate must not run'); };
   const logs = [];
   const errors = [];
@@ -68,14 +68,29 @@ test('local help/version/unknown paths never touch the delegate', async () => {
   const origErr = console.error;
   console.log = (...args) => { logs.push(args.join(' ')); };
   console.error = (...args) => { errors.push(args.join(' ')); };
+  const savedEnv = { ...process.env };
+  const { mkdirSync, rmSync } = await import('node:fs');
+  const { tmpdir } = await import('node:os');
+  const tmpHome = `${tmpdir()}/webmcp-cli-delegate-local-${Date.now()}`;
+  mkdirSync(tmpHome, { recursive: true });
+  process.env.HOME = tmpHome;
+  process.env.WEBMCP_HOME = `${tmpHome}/.webmcp`;
+  delete process.env.WEBMCP_KIT_MANIFEST;
   try {
     assert.equal(await main([], { runChild }), 1);
     assert.equal(await main(['help'], { runChild }), 0);
     assert.equal(await main(['version'], { runChild }), 0);
     assert.equal(await main(['bogus-route'], { runChild }), 1);
+    assert.equal(await main(['skills', '--help'], { runChild }), 0);
+    assert.equal(await main(['doctor', '--help'], { runChild }), 0);
   } finally {
     console.log = origLog;
     console.error = origErr;
+    for (const key of Object.keys(process.env)) {
+      if (!(key in savedEnv)) delete process.env[key];
+    }
+    for (const [k, v] of Object.entries(savedEnv)) process.env[k] = v;
+    rmSync(tmpHome, { recursive: true, force: true });
   }
   assert.match(logs.join('\n'), /webmcp-cli/);
   assert.match(errors.join('\n'), /Unknown command: bogus-route/);

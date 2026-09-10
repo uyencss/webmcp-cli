@@ -20,9 +20,10 @@ test('help flags render the preview route table on stdout', () => {
   for (const args of [[], ['help'], ['--help'], ['-h']]) {
     const result = run(args);
     assert.match(result.stdout, /webmcp-cli/, `${JSON.stringify(args)} must brand the preview`);
-    for (const route of ['mcp', 'doctor', 'bootstrap', 'gateway', 'ai', 'project', 'project-kit']) {
+    for (const route of ['mcp', 'doctor', 'bootstrap', 'gateway', 'ai', 'project', 'project-kit', 'skills']) {
       assert.match(result.stdout, new RegExp(route), `${JSON.stringify(args)} must list ${route}`);
     }
+    assert.match(result.stdout, /CLI-local/, 'help must mark skills/doctor as CLI-local');
     assert.equal(result.stderr, '', `help must not write diagnostics: ${result.stderr}`);
   }
 });
@@ -58,4 +59,14 @@ test('version output matches the package version', async () => {
   const pkg = JSON.parse(readFileSync(path.join(PKG_ROOT, 'package.json'), 'utf8'));
   const result = run(['--version']);
   assert.equal(result.stdout.trim(), pkg.version);
+});
+
+test('skills and doctor help are handled locally without a Browser checkout', () => {
+  const env = { WEBMCP_BROWSER_BIN: path.join(PKG_ROOT, 'missing-browser-bin.mjs') };
+  const skillsHelp = run(['skills', '--help'], env);
+  assert.equal(skillsHelp.status, 0, skillsHelp.stderr);
+  assert.match(skillsHelp.stdout, /WebMCP Skills/);
+  const doctorHelp = run(['doctor', '--help'], env);
+  assert.equal(doctorHelp.status, 0, doctorHelp.stderr);
+  assert.match(doctorHelp.stdout, /WebMCP CLI doctor/);
 });

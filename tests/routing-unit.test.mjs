@@ -31,11 +31,11 @@ function recorder(exitCode = 0) {
   return { calls, runChild };
 }
 
-test('every browser and legacy route delegates with the command preserved', async (t) => {
+test('every browser route delegates with the command preserved', async (t) => {
   const browserBin = fixtureBin(t);
   const env = { WEBMCP_BROWSER_BIN: browserBin };
   for (const [command, route] of ROUTES) {
-    if (route.kind !== 'browser' && route.kind !== 'legacy-browser') continue;
+    if (route.kind !== 'browser') continue;
     const { calls, runChild } = recorder();
     const code = await main([command, '--probe', 'a b'], { env, runChild });
     assert.equal(code, 0, command);
@@ -45,6 +45,39 @@ test('every browser and legacy route delegates with the command preserved', asyn
       args: [command, '--probe', 'a b'],
       useNode: true,
     }], command);
+  }
+});
+
+test('local skills/doctor and unknown never spawn a child', async () => {
+  const runChild = async () => { throw new Error('delegate must not run for local/unknown'); };
+  const logs = [];
+  const errors = [];
+  const origLog = console.log;
+  const origErr = console.error;
+  console.log = (...args) => { logs.push(args.join(' ')); };
+  console.error = (...args) => { errors.push(args.join(' ')); };
+  const savedEnv = { ...process.env };
+  const tmpHome = `/tmp/webmcp-cli-local-${Date.now()}-${Math.random().toString(16).slice(2)}`;
+  const { mkdirSync } = await import('node:fs');
+  mkdirSync(tmpHome, { recursive: true });
+  process.env.HOME = tmpHome;
+  process.env.WEBMCP_HOME = `${tmpHome}/.webmcp`;
+  delete process.env.WEBMCP_KIT_MANIFEST;
+  try {
+    // unknown must fail without spawning
+    assert.equal(await main(['definitely-not-a-route'], { runChild }), 1);
+    // local help paths must not spawn
+    assert.equal(await main(['skills', '--help'], { runChild }), 0);
+    assert.equal(await main(['doctor', '--help'], { runChild }), 0);
+  } finally {
+    console.log = origLog;
+    console.error = origErr;
+    for (const key of Object.keys(process.env)) {
+      if (!(key in savedEnv)) delete process.env[key];
+    }
+    for (const [k, v] of Object.entries(savedEnv)) process.env[k] = v;
+    const { rmSync } = await import('node:fs');
+    rmSync(tmpHome, { recursive: true, force: true });
   }
 });
 
@@ -108,7 +141,13 @@ test('project-kit delegates only when a real executable resolves', async (t) => 
   assert.deepEqual(calls[0].args, ['plan']);
 });
 
-test('resolvers honour overrides, siblings, packages and typed errors', (t) => {
+test('resolvers honour overrides, siblings, packages and typed errors', async (t) => {
+  const { BROWSER_SIBLINGS, BROWSER_PACKAGE } = await import('../lib/resolve.mjs');
+  // Bridge prefers the explicit webmcp-browser executable before the legacy shim.
+  assert.ok(BROWSER_SIBLINGS[0].endsWith('bin/webmcp-browser.mjs'));
+  assert.ok(BROWSER_SIBLINGS[1].endsWith('bin/webmcp-browser.mjs'));
+  assert.equal(BROWSER_PACKAGE.subpaths[0], 'bin/webmcp-browser.mjs');
+  assert.ok(BROWSER_PACKAGE.subpaths.includes('bin/webmcp.mjs'), 'legacy fallback must remain for older Browser versions');
   const browserBin = fixtureBin(t);
   assert.equal(resolveBrowserBin({ env: { WEBMCP_BROWSER_BIN: browserBin }, cwd: '/tmp' }), browserBin);
   assert.equal(resolveBrowserBin({ env: {}, packageRoot: '/nonexistent-root-xyz' }), null);
