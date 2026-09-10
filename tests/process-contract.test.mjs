@@ -229,7 +229,7 @@ test('SIGTERM never kills a detached background grandchild', async (t) => {
   );
 });
 
-test('single common delegate owns every async spawn call site', async () => {
+test('single common delegate owns every child-process call site', async () => {
   const { readdirSync, readFileSync, statSync } = await import('node:fs');
   function listMjs(dir) {
     const out = [];
@@ -243,11 +243,29 @@ test('single common delegate owns every async spawn call site', async () => {
   }
   const libRoot = path.join(PKG_ROOT, 'lib');
   const files = listMjs(libRoot);
-  const asyncSpawnOwners = files.filter((file) => /\bspawn\s*\(/.test(readFileSync(file, 'utf8')));
-  const relative = asyncSpawnOwners.map((file) => path.relative(PKG_ROOT, file).replaceAll(path.sep, '/'));
-  assert.deepEqual(relative, ['lib/delegate.mjs'], 'only lib/delegate.mjs may contain async spawn( call sites');
+  const bannedSubstrings = [
+    'node:child_process',
+    'child_process',
+    'spawn(',
+    'spawnSync(',
+    'exec(',
+    'execSync(',
+    'execFile(',
+    'execFileSync(',
+    'fork(',
+  ];
+  const offenders = [];
+  for (const file of files) {
+    const relative = path.relative(PKG_ROOT, file).replaceAll(path.sep, '/');
+    if (relative === 'lib/delegate.mjs') continue;
+    const content = readFileSync(file, 'utf8');
+    const hits = bannedSubstrings.filter((token) => content.includes(token));
+    if (hits.length > 0) offenders.push(`${relative}: ${hits.join(', ')}`);
+  }
+  assert.deepEqual(offenders, [], `only lib/delegate.mjs may contain child-process call sites (offenders: ${offenders.join('; ')})`);
   const delegateContent = readFileSync(path.join(PKG_ROOT, 'lib', 'delegate.mjs'), 'utf8');
   assert.match(delegateContent, /from\s+['"]node:child_process['"]/, 'delegate must import node:child_process');
+  assert.match(delegateContent, /\bspawn\s*\(/, 'delegate must own the spawn(s)');
 });
 
 test('delegate waits for child stdio cleanup before resolving', async () => {
