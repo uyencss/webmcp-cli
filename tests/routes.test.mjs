@@ -57,7 +57,7 @@ test('help/version/unknown stay local; nothing falls through silently', () => {
   }
   for (const [, descriptor] of ROUTES) {
     assert.ok(
-      ['browser', 'local', 'component', 'project-kit'].includes(descriptor.kind),
+      ['browser', 'local', 'component', 'project-kit', 'project'].includes(descriptor.kind),
       `route kind must be explicit: ${JSON.stringify(descriptor)}`,
     );
   }
@@ -67,9 +67,10 @@ test('help/version/unknown stay local; nothing falls through silently', () => {
 });
 
 test('browser-owned routes delegate direct; skills/doctor are CLI-local', () => {
-  for (const command of ['mcp', 'gateway', 'profiles', 'profile-pool', 'launch', 'close', 'quit', 'health', 'call', 'extension-info', 'extension-path', 'bootstrap', 'project']) {
+  for (const command of ['mcp', 'gateway', 'profiles', 'profile-pool', 'launch', 'close', 'quit', 'health', 'call', 'extension-info', 'extension-path', 'bootstrap']) {
     assert.equal(ROUTES.get(command).kind, 'browser', command);
   }
+  assert.equal(ROUTES.get('project').kind, 'project', 'project splits in the CLI');
   for (const command of ['skills', 'doctor']) {
     assert.equal(ROUTES.get(command).kind, 'local', command);
   }
