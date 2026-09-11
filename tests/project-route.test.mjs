@@ -238,6 +238,9 @@ test('missing target/action/id are usage errors with no spawn', async (t) => {
     ['project', 'session'],
     ['project', 'session', 'plan'],
     ['project', 'session', 'apply'],
+    ['project', 'session', 'list'],
+    ['project', 'session', 'prune'],
+    ['project', 'session', 'archive'],
     ['project', 'session', 'frobnicate', '--target', '/tmp/p'],
   ];
   for (const args of cases) {
@@ -367,7 +370,7 @@ test('resolveInstalledComponentDir contains escapes and requires a directory', a
   assert.equal(resolveInstalledComponentDir('webmcp-project-library', { WEBMCP_RUNTIME_MANIFEST: manifest2 }, '/tmp'), null);
 });
 
-test('session plan and apply delegate exactly to Project Kit with argv preserved', async (t) => {
+test('session plan, apply, list, prune, archive delegate exactly to Project Kit with argv preserved', async (t) => {
   const { file: kitBin } = fixtureBin(t);
   const env = { WEBMCP_PROJECT_KIT_BIN: kitBin };
 
@@ -391,6 +394,24 @@ test('session plan and apply delegate exactly to Project Kit with argv preserved
   assert.equal(c3[0].file, kitBin);
   assert.equal(c3[0].useNode, true);
   assert.deepEqual(c3[0].args, ['session', 'apply', '--target', '/tmp/proj', '--yes', '--json']);
+
+  // session list with --target, --status, --limit, --json
+  const { calls: c4, runChild: r4 } = recorder();
+  assert.equal(await main(['project', 'session', 'list', '--target', '/tmp/proj', '--status', 'active', '--limit', '20', '--json'], { env, runChild: r4 }), 0);
+  assert.equal(c4.length, 1);
+  assert.deepEqual(c4[0].args, ['session', 'list', '--target', '/tmp/proj', '--status', 'active', '--limit', '20', '--json']);
+
+  // session prune with --target, --older-than, --yes
+  const { calls: c5, runChild: r5 } = recorder();
+  assert.equal(await main(['project', 'session', 'prune', '--target', '/tmp/proj', '--older-than', '30', '--yes'], { env, runChild: r5 }), 0);
+  assert.equal(c5.length, 1);
+  assert.deepEqual(c5[0].args, ['session', 'prune', '--target', '/tmp/proj', '--older-than', '30', '--yes']);
+
+  // session archive with -t, --out, --session
+  const { calls: c6, runChild: r6 } = recorder();
+  assert.equal(await main(['project', 'session', 'archive', '-t', '/tmp/proj', '--out', '/tmp/bundle', '--session', 's1'], { env, runChild: r6 }), 0);
+  assert.equal(c6.length, 1);
+  assert.deepEqual(c6[0].args, ['session', 'archive', '-t', '/tmp/proj', '--out', '/tmp/bundle', '--session', 's1']);
 });
 
 test('session missing Kit bin fails with typed message and no spawn', async (t) => {
