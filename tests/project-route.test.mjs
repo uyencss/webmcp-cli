@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict';
-import { existsSync, mkdtempSync, mkdirSync, realpathSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdtempSync, mkdirSync, readdirSync, readFileSync, realpathSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import test from 'node:test';
@@ -235,6 +235,10 @@ test('missing target/action/id are usage errors with no spawn', async (t) => {
     ['project', 'plugin'],
     ['project', 'inspect'],
     ['project', 'new', '--archetype'],
+    ['project', 'session'],
+    ['project', 'session', 'plan'],
+    ['project', 'session', 'apply'],
+    ['project', 'session', 'frobnicate', '--target', '/tmp/p'],
   ];
   for (const args of cases) {
     const { code } = await captureStderr(() => main(args, { env, runChild }));
@@ -361,4 +365,82 @@ test('resolveInstalledComponentDir contains escapes and requires a directory', a
   const manifest2 = path.join(root2, 'release.json');
   writeFileSync(manifest2, JSON.stringify({ schema: 'webmcp-runtime-release/2', components: [{ id: 'webmcp-project-library' }] }));
   assert.equal(resolveInstalledComponentDir('webmcp-project-library', { WEBMCP_RUNTIME_MANIFEST: manifest2 }, '/tmp'), null);
+});
+
+test('session plan and apply delegate exactly to Project Kit with argv preserved', async (t) => {
+  const { file: kitBin } = fixtureBin(t);
+  const env = { WEBMCP_PROJECT_KIT_BIN: kitBin };
+
+  // session plan with --target and --json
+  const { calls: c1, runChild: r1 } = recorder();
+  assert.equal(await main(['project', 'session', 'plan', '--target', '/tmp/proj', '--json'], { env, runChild: r1 }), 0);
+  assert.equal(c1.length, 1);
+  assert.equal(c1[0].file, kitBin);
+  assert.equal(c1[0].useNode, true);
+  assert.deepEqual(c1[0].args, ['session', 'plan', '--target', '/tmp/proj', '--json']);
+
+  // session plan with -t and optional flags preserved
+  const { calls: c2, runChild: r2 } = recorder();
+  assert.equal(await main(['project', 'session', 'plan', '-t', '/tmp/proj', '--display-name', 'slug-a', '--timezone', 'UTC', '--now', '2026-09-11T12:00:00.000Z'], { env, runChild: r2 }), 0);
+  assert.deepEqual(c2[0].args, ['session', 'plan', '-t', '/tmp/proj', '--display-name', 'slug-a', '--timezone', 'UTC', '--now', '2026-09-11T12:00:00.000Z']);
+
+  // session apply with --target and --yes
+  const { calls: c3, runChild: r3 } = recorder();
+  assert.equal(await main(['project', 'session', 'apply', '--target', '/tmp/proj', '--yes', '--json'], { env, runChild: r3 }), 0);
+  assert.equal(c3.length, 1);
+  assert.equal(c3[0].file, kitBin);
+  assert.equal(c3[0].useNode, true);
+  assert.deepEqual(c3[0].args, ['session', 'apply', '--target', '/tmp/proj', '--yes', '--json']);
+});
+
+test('session missing Kit bin fails with typed message and no spawn', async (t) => {
+  const missing = path.join(tmpdir(), `no-kit-${Date.now()}-${Math.random().toString(16).slice(2)}.mjs`);
+  const env = { WEBMCP_PROJECT_KIT_BIN: missing };
+  const runChild = async () => { throw new Error('must not spawn'); };
+  const { code, stderr } = await captureStderr(() => main(['project', 'session', 'plan', '--target', '/tmp/p'], { env, runChild }));
+  assert.equal(code, 1);
+  assert.equal(stderr.trim(), projectKitNotFoundMessage({ env }).trim());
+});
+
+test('session route delegates to installed payload Project Kit bin in installed mode', async (t) => {
+  const root = mkdtempSync(path.join(tmpdir(), 'webmcp-session-installed-'));
+  t.after(() => rmSync(root, { recursive: true, force: true }));
+  const kitDir = path.join(root, 'payload', 'webmcp-project-kit');
+  mkdirSync(kitDir, { recursive: true });
+  const installedKitBin = path.join(kitDir, 'webmcp-project-kit.mjs');
+  writeFileSync(installedKitBin, '#!/usr/bin/env node\n');
+
+  const manifestPath = path.join(root, 'release.json');
+  writeFileSync(manifestPath, JSON.stringify({
+    schema: 'webmcp-runtime-release/2',
+    components: [
+      { id: 'webmcp-project-kit', publicBins: { 'webmcp-project-kit': 'webmcp-project-kit.mjs' } },
+    ],
+  }));
+
+  const env = { WEBMCP_RUNTIME_MANIFEST: manifestPath };
+  const { calls, runChild } = recorder();
+  const code = await main(['project', 'session', 'plan', '--target', '/tmp/proj', '--json'], { env, runChild });
+  assert.equal(code, 0);
+  assert.equal(calls.length, 1);
+  assert.equal(calls[0].file, installedKitBin);
+  assert.deepEqual(calls[0].args, ['session', 'plan', '--target', '/tmp/proj', '--json']);
+});
+
+test('no deep import: lib/** never imports webmcp-project-kit module path', () => {
+  const libDir = path.resolve(PACKAGE_ROOT, 'lib');
+  const files = [];
+  function scan(dir) {
+    for (const ent of readdirSync(dir, { withFileTypes: true })) {
+      const full = path.join(dir, ent.name);
+      if (ent.isDirectory()) scan(full);
+      else if (ent.name.endsWith('.mjs') || ent.name.endsWith('.js')) files.push(full);
+    }
+  }
+  scan(libDir);
+  for (const file of files) {
+    const content = readFileSync(file, 'utf8');
+    const importMatch = content.match(/(?:from\s+['"][^'"]*webmcp-project-kit[^'"]*['"]|import\s*\([^)]*webmcp-project-kit[^)]*\))/);
+    assert.equal(importMatch, null, `Forbidden import of webmcp-project-kit in ${path.relative(PACKAGE_ROOT, file)}`);
+  }
 });
