@@ -5,6 +5,7 @@ import {
   existsSync,
   mkdtempSync,
   readFileSync,
+  realpathSync,
   rmSync,
   mkdirSync,
   symlinkSync,
@@ -22,7 +23,9 @@ import {
   resolveBrowserBin,
   resolveCaptchaBin,
   resolveComponentBin,
+  resolveInstalledComponentDir,
   resolveProjectKitBin,
+  resolveProjectLibraryRoot,
 } from '../lib/resolve.mjs';
 
 const PKG_ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
@@ -479,4 +482,50 @@ test('dev mode without manifest env keeps existing resolution and messages', (t)
   const installedEnvWithCaptcha = { WEBMCP_RUNTIME_MANIFEST: manifestPath, WEBMCP_CAPTCHA_BIN: captchaBin };
   assert.equal(resolveCaptchaBin({ env: installedEnvWithCaptcha, cwd: '/' }), captchaBin);
   assert.equal(resolveComponentBin('captcha', { env: installedEnvWithCaptcha, cwd: '/' }), captchaBin);
+});
+
+test('installed component dir returns realpath when the release root is a current symlink', (t) => {
+  const base = mkdtempSync(path.join(tmpdir(), 'webmcp-installed-realpath-'));
+  t.after(() => rmSync(base, { recursive: true, force: true }));
+  const release = path.join(base, 'releases', 'rel_x');
+  mkdirSync(path.join(release, 'payload', 'webmcp-project-library'), { recursive: true });
+  const manifest = {
+    schema: 'webmcp-runtime-release/2',
+    release: 'rel_x',
+    components: [{ id: 'webmcp-project-library', version: '0.0.0-test' }],
+  };
+  writeFileSync(path.join(release, 'release.json'), JSON.stringify(manifest));
+  const link = path.join(base, 'current');
+  try {
+    symlinkSync(release, link, 'dir');
+  } catch (error) {
+    t.skip(`symlink not permitted on this platform: ${error && error.message ? error.message : error}`);
+    return;
+  }
+  const env = { WEBMCP_RUNTIME_ROOT: link };
+  const resolved = resolveProjectLibraryRoot({ env, cwd: '/tmp' });
+  assert.ok(resolved, 'library root must resolve through the current symlink');
+  assert.ok(existsSync(resolved), `resolved library must exist: ${resolved}`);
+  assert.ok(!resolved.split(path.sep).includes('current'), `resolved path must not leak current: ${resolved}`);
+  assert.equal(realpathSync(resolved), resolved, `resolved path must be a realpath: ${resolved}`);
+  const direct = resolveInstalledComponentDir('webmcp-project-library', env, '/tmp');
+  assert.equal(direct, resolved, 'component dir and library root must agree');
+});
+
+test('installed component dir returns realpath for a normal prefix', (t) => {
+  const root = mkdtempSync(path.join(tmpdir(), 'webmcp-installed-realpath-plain-'));
+  t.after(() => rmSync(root, { recursive: true, force: true }));
+  mkdirSync(path.join(root, 'payload', 'webmcp-project-library'), { recursive: true });
+  const manifest = {
+    schema: 'webmcp-runtime-release/2',
+    release: 'plain',
+    components: [{ id: 'webmcp-project-library', version: '0.0.0-test' }],
+  };
+  const manifestPath = path.join(root, 'release.json');
+  writeFileSync(manifestPath, JSON.stringify(manifest));
+  const env = installedEnv(manifestPath);
+  const resolved = resolveInstalledComponentDir('webmcp-project-library', env, '/tmp');
+  assert.ok(resolved, 'component dir must resolve');
+  assert.ok(existsSync(resolved));
+  assert.equal(realpathSync(resolved), resolved, `component dir must be a realpath: ${resolved}`);
 });

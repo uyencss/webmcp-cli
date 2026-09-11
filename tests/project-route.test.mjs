@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict';
-import { existsSync, mkdtempSync, mkdirSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdtempSync, mkdirSync, realpathSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import test from 'node:test';
@@ -323,7 +323,8 @@ test('resolveProjectLibraryRoot honours override, sibling and installed payload'
   }));
   const env = { WEBMCP_RUNTIME_MANIFEST: manifestPath };
   const resolved = resolveProjectLibraryRoot({ env, cwd: '/tmp' });
-  assert.equal(resolved, path.join(root, 'payload', 'webmcp-project-library'));
+  // Installed dirs return the realpath (no symlinked ancestor such as `current`).
+  assert.equal(resolved, realpathSync(path.join(root, 'payload', 'webmcp-project-library')));
   // Messages.
   assert.match(projectLibraryNotFoundMessage({ env: {} }), /WEBMCP_PROJECT_LIBRARY/);
   assert.match(projectLibraryNotFoundMessage({ env }), /webmcp-project-library/);
@@ -348,7 +349,7 @@ test('resolveInstalledComponentDir contains escapes and requires a directory', a
   writeFileSync(manifestPath, JSON.stringify({ schema: 'webmcp-runtime-release/2', components: [{ id: 'webmcp-project-library' }] }));
   const env = { WEBMCP_RUNTIME_MANIFEST: manifestPath };
   const ok = resolveInstalledComponentDir('webmcp-project-library', env, '/tmp');
-  assert.equal(ok, path.join(root, 'payload', 'webmcp-project-library'));
+  assert.equal(ok, realpathSync(path.join(root, 'payload', 'webmcp-project-library')));
   assert.equal(resolveInstalledComponentDir('no-such', env, '/tmp'), null);
   assert.equal(resolveInstalledComponentDir('../evil', env, '/tmp'), null);
   assert.equal(resolveInstalledComponentDir('', env, '/tmp'), null);
