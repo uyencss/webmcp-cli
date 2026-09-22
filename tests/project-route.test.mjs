@@ -48,64 +48,107 @@ async function captureStderr(fn) {
   }
 }
 
-// Legacy matrix: every Browser-owned subcommand stays byte-identical.
-test('legacy project subcommands delegate to Browser unchanged', async (t) => {
-  const { file: browserBin } = fixtureBin(t);
+// Legacy matrix: every legacy subcommand routes directly to the Automation
+// Runner (initiative 2026-09-project-commands-extraction, plan §7 commit 1) —
+// the aggregate owns the route and never delegates to Browser Kit.
+test('legacy project subcommands route directly to the Runner with exact argv', async (t) => {
+  const { file: runnerBin } = fixtureBin(t);
   const { file: kitBin } = fixtureBin(t);
   const libDir = fixtureDir(t);
-  const env = { WEBMCP_BROWSER_BIN: browserBin, WEBMCP_PROJECT_KIT_BIN: kitBin, WEBMCP_PROJECT_LIBRARY: libDir };
+  const env = { WEBMCP_RUNNER_BIN: runnerBin, WEBMCP_PROJECT_KIT_BIN: kitBin, WEBMCP_PROJECT_LIBRARY: libDir };
   const cases = [
-    ['new', '--template', 'tpl-a', '--at', '/tmp/dir with spaces'],
-    ['new', 'my-id', '--template', 'tpl-a'],
-    ['new', 'my-id'],
-    ['attach', '--foo', 'bar'],
-    ['list', '--json'],
-    ['where'],
-    ['doctor', '--json'],
-    ['charter', 'get'],
-    ['guide', 'show'],
-    ['schedule', 'list'],
-    ['content', 'get'],
-    ['policy', 'show'],
-    ['init', '--yes'],
-    ['init-store', '--json'],
-    ['build-index', '--json'],
-    ['export-pack', '--out', 'x'],
-    ['unknown-subcommand', '--flag'],
+    [['new', '--template', 'tpl-a', '--at', '/tmp/dir with spaces'], ['workspace', 'project-new', '--template', 'tpl-a', '--at', '/tmp/dir with spaces']],
+    [['new', '--template', 'tpl-a', '--at', '/tmp/x', '--id', 'pid', '--name', 'Tên', '--dry-run', '--json'], ['workspace', 'project-new', '--template', 'tpl-a', '--at', '/tmp/x', '--id', 'pid', '--name', 'Tên', '--dry-run', '--json']],
+    [['new', '--at', '/tmp/boot'], ['workspace', 'bootstrap', '--workspace-root', '/tmp/boot', '--all']],
+    [['attach', '--foo', '/tmp/proj'], ['workspace', 'attach', '--workspace', '/tmp/proj', '--foo']],
+    [['attach', '--scan', '/tmp/root', '--dry-run'], ['workspace', 'attach', '--scan', '/tmp/root', '--dry-run']],
+    [['list', '--json'], ['workspace', 'list', '--json']],
+    [['where', 'proj-x', '--json'], ['workspace', 'describe', 'proj-x', 'proj-x', '--json']],
+    [['guide', 'list', '--workspace', '/tmp/proj', '--json'], ['workspace', 'guide', 'list', '--workspace', '/tmp/proj', '--json']],
+    [['guide', 'stage', 'collections/a/GUIDE.md', '--workspace', '/tmp/proj', '--as', 'inputs/g.md', '--yes'], ['workspace', 'guide', 'stage', 'collections/a/GUIDE.md', '--workspace', '/tmp/proj', '--as', 'inputs/g.md', '--yes']],
+    [['charter', 'adopt', 'CHARTER.md', '--workspace', '/tmp/proj', '--yes', '--json'], ['workspace', 'charter', 'adopt', 'CHARTER.md', '--workspace', '/tmp/proj', '--yes', '--json']],
+    [['schedule', 'list', '--workspace', '/tmp/proj', '--json'], ['project-schedule', 'list', '--workspace', '/tmp/proj', '--json']],
+    [['init', '--yes'], ['project', 'init-store', '--yes']],
+    [['init-store', '--json'], ['project', 'init-store', '--json']],
+    [['build-index', '--json'], ['project', 'build-index', '--json']],
+    [['export-pack', '--out', 'x'], ['project', 'export-pack', '--out', 'x']],
+    [['policy', 'plan', '--at', '/tmp/proj', '--json'], ['project', 'policy', 'plan', '--workspace', '/tmp/proj', '--json']],
+    [['content', 'plan', '--at', '/tmp/proj', '--json'], ['project', 'content', 'plan', '--workspace', '/tmp/proj', '--json']],
   ];
-  for (const args of cases) {
+  for (const [args, expected] of cases) {
     const { calls, runChild } = recorder();
     const code = await main(['project', ...args], { env, runChild });
     assert.equal(code, 0, JSON.stringify(args));
     assert.deepEqual(calls, [{
-      label: 'Browser project',
-      file: browserBin,
-      args: ['project', ...args],
+      label: 'Automation Runner',
+      file: runnerBin,
+      args: expected,
       useNode: true,
     }], JSON.stringify(args));
   }
-  // Matrix item 10: legacy template never becomes a Kit create.
-  const { calls, runChild } = recorder();
-  const code = await main(['project', 'new', '--template', 'tpl-a', '--at', '/tmp/legacy-dir'], { env, runChild });
-  assert.equal(code, 0);
-  assert.deepEqual(calls[0].args, ['project', 'new', '--template', 'tpl-a', '--at', '/tmp/legacy-dir']);
-  assert.equal(calls[0].file, browserBin);
 });
 
-test('legacy project --help routes to Browser', async (t) => {
-  const { file: browserBin } = fixtureBin(t);
-  for (const args of [[], ['--help'], ['-h'], ['help']]) {
-    const { calls, runChild } = recorder();
-    const env = { WEBMCP_BROWSER_BIN: browserBin };
-    const code = await main(['project', ...args], { env, runChild });
-    assert.equal(code, 0, JSON.stringify(args));
-    assert.deepEqual(calls[0], {
-      label: 'Browser project',
-      file: browserBin,
-      args: ['project', ...args],
-      useNode: true,
-    }, JSON.stringify(args));
+test('legacy project failures stay local and never spawn', async (t) => {
+  const { file: runnerBin } = fixtureBin(t);
+  const { file: kitBin } = fixtureBin(t);
+  const libDir = fixtureDir(t);
+  const env = { WEBMCP_RUNNER_BIN: runnerBin, WEBMCP_PROJECT_KIT_BIN: kitBin, WEBMCP_PROJECT_LIBRARY: libDir };
+  const runChild = async () => { throw new Error('must not spawn'); };
+  const cases = [
+    ['project', 'new', 'my-id', '--template', 'tpl-a'],   // positional rejected by parse
+    ['project', 'new', 'my-id'],                           // no template, no --at
+    ['project', 'new', '--help'],                          // Quirk 1: exit 2, not help
+    ['project', 'attach'],                                 // missing <dir>/--scan
+    ['project', 'charter', 'get'],                         // only adopt exists
+    ['project', 'guide', '--help'],                        // help branch: exit 2, no registry lookup
+    ['project', 'content', 'get'],                         // unknown content verb
+    ['project', 'policy', 'show'],                         // unknown policy verb
+    ['project', 'policy', 'plan', '--at', '/tmp/p'],       // missing --json
+    ['project', 'unknown-subcommand', '--flag'],
+  ];
+  for (const args of cases) {
+    const { code } = await captureStderr(() => main(args, { env, runChild }));
+    assert.equal(code, 2, JSON.stringify(args));
   }
+});
+
+test('project doctor chains the three Runner calls in order', async (t) => {
+  const { file: runnerBin } = fixtureBin(t);
+  const env = { WEBMCP_RUNNER_BIN: runnerBin };
+  const { calls, runChild } = recorder();
+  const code = await main(['project', 'doctor', '/tmp/proj', '--json'], { env, runChild });
+  assert.equal(code, 0);
+  assert.deepEqual(calls.map((c) => c.args), [
+    ['workspace', 'doctor', '--workspace', '/tmp/proj', '--json'],
+    ['workspace', 'registry', 'audit', '--workspace-root', '/tmp/proj', '--json'],
+    ['workspace', 'attach', '--workspace', '/tmp/proj', '--dry-run', '--json'],
+  ]);
+});
+
+test('project --help renders locally (exit 0) and never spawns', async (t) => {
+  const { file: runnerBin } = fixtureBin(t);
+  const runChild = async () => { throw new Error('must not spawn'); };
+  for (const args of [[], ['--help'], ['-h'], ['help']]) {
+    const logs = [];
+    const orig = console.log;
+    console.log = (...a) => { logs.push(a.join(' ')); };
+    let code;
+    try {
+      code = await main(['project', ...args], { env: { WEBMCP_RUNNER_BIN: runnerBin }, runChild });
+    } finally {
+      console.log = orig;
+    }
+    assert.equal(code, 0, JSON.stringify(args));
+    assert.match(logs.join('\n'), /^webmcp project — WebMCP project workspace management/);
+  }
+});
+
+test('missing Runner bin fails with typed message and no spawn', async (t) => {
+  const missing = path.join(tmpdir(), `no-runner-${Date.now()}-${Math.random().toString(16).slice(2)}.mjs`);
+  const runChild = async () => { throw new Error('must not spawn'); };
+  const { code, stderr } = await captureStderr(() => main(['project', 'list', '--json'], { env: { WEBMCP_RUNNER_BIN: missing }, runChild }));
+  assert.equal(code, 1);
+  assert.match(stderr, /WEBMCP_RUNNER_BIN/);
 });
 
 test('new --archetype routes to create with template/plugins/id/target preserved', async (t) => {

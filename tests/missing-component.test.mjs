@@ -25,12 +25,17 @@ test('help and non-browser routes work without a Browser checkout', () => {
 
   const version = run(['--version']);
   assert.equal(version.status, 0, version.stderr);
+
+  // The aggregate owns `project`: its help is local since §7 commit 1.
+  const projectHelp = run(['project', '--help']);
+  assert.equal(projectHelp.status, 0, projectHelp.stderr);
+  assert.match(projectHelp.stdout, /^webmcp project — WebMCP project workspace management/);
 });
 
 test('browser routes report a typed actionable error when the Browser entry is missing', (t) => {
   const home = mkdtempSync(path.join(tmpdir(), 'webmcp-cli-missing-browser-'));
   t.after(() => rmSync(home, { recursive: true, force: true }));
-  for (const args of [['extension-path'], ['mcp', '--help'], ['gateway', '--help'], ['bootstrap', '--help'], ['project', '--help']]) {
+  for (const args of [['extension-path'], ['mcp', '--help'], ['gateway', '--help'], ['bootstrap', '--help']]) {
     const result = run(args, { WEBMCP_HOME: home });
     assert.equal(result.status, 1, `${args}: expected failure without Browser`);
     assert.match(result.stderr, /Browser executable not found/, `${args}: ${result.stderr}`);
