@@ -28,6 +28,7 @@ const EXPECTED_BASELINE = [
   'mobile',
   'adb',
   'captcha',
+  'jev',
   'skills',
   'store',
   'health',
@@ -77,10 +78,11 @@ test('browser-owned routes delegate direct; skills/doctor are CLI-local', () => 
 });
 
 test('component routes resolve explicit executables; store stays a site alias', () => {
-  for (const command of ['workflow', 'ai', 'site', 'automation', 'vault', 'mobile', 'adb', 'captcha', 'store']) {
+  for (const command of ['workflow', 'ai', 'jev', 'site', 'automation', 'vault', 'mobile', 'adb', 'captcha', 'store']) {
     assert.equal(ROUTES.get(command).kind, 'component', command);
   }
   assert.equal(ROUTES.get('store').component, 'site');
+  assert.equal(ROUTES.get('jev').component, 'jev');
   assert.equal(ROUTES.get('store').legacyAlias, true);
   assert.equal(ROUTES.get('adb').component, 'mobile');
   assert.equal(ROUTES.get('project-kit').kind, 'project-kit');
