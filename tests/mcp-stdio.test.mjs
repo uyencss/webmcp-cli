@@ -7,11 +7,15 @@ import { fileURLToPath } from 'node:url';
 
 const PKG_ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const BIN = path.join(PKG_ROOT, 'bin', 'webmcp-cli.mjs');
-const CANDIDATE_BROWSER_BIN = path.resolve(PKG_ROOT, '..', 'browser', 'bin', 'webmcp.mjs');
-const AUTHORITATIVE_BROWSER_BIN = path.resolve(PKG_ROOT, '..', 'webmcp-browser-kit', 'bin', 'webmcp.mjs');
+// Mirror candidate resolution order from lib/resolve.mjs BROWSER_SIBLINGS.
+const CANDIDATE_BROWSER_BIN = path.resolve(PKG_ROOT, '..', 'browser', 'bin', 'webmcp-browser.mjs');
 const BROWSER_BIN =
-  [CANDIDATE_BROWSER_BIN, AUTHORITATIVE_BROWSER_BIN].find((candidate) => existsSync(candidate)) ??
-  CANDIDATE_BROWSER_BIN;
+  [
+    CANDIDATE_BROWSER_BIN,
+    path.resolve(PKG_ROOT, '..', 'webmcp-browser-kit', 'bin', 'webmcp-browser.mjs'),
+    path.resolve(PKG_ROOT, '..', 'browser', 'bin', 'webmcp.mjs'),
+    path.resolve(PKG_ROOT, '..', 'webmcp-browser-kit', 'bin', 'webmcp.mjs'),
+  ].find((candidate) => existsSync(candidate)) ?? CANDIDATE_BROWSER_BIN;
 
 function run(args, { input = undefined, env = {}, timeout = 15000 } = {}) {
   return spawnSync(process.execPath, [BIN, ...args], {
