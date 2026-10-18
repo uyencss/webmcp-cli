@@ -30,6 +30,11 @@ without a shell.
 - `project-kit` delegates only to an explicit Project Kit executable when one
   is installed; otherwise it reports component-not-installed and never replaces
   the legacy `project` route.
+- `fleet` (`webmcp fleet [profiles|fingerprint] [--node <id>] [--search <q>] [--mode <mode>] [--json]`)
+  runs locally inside `webmcp-cli` (`lib/commands/fleet.mjs`), scanning Chrome and
+  `~/.webmcp/managed-profiles` across Homelab nodes (`local`, `mac-m1`,
+  `reup-minipc`, `dell`) and evaluating **Same-OS Host-Aligned Fingerprint
+  Decisions (`shouldInjectFingerprint`)** via `@webmcp/fingerprint-kit`.
 
 ## Environment overrides
 
