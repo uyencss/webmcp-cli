@@ -37,6 +37,7 @@ const EXPECTED_BASELINE = [
   'vault',
   'extension-info',
   'extension-path',
+  'cookies',
 ];
 
 test('route table freezes every baseline route/alias plus local help/version and project-kit', () => {
@@ -69,7 +70,7 @@ test('help/version/unknown stay local; nothing falls through silently', () => {
 });
 
 test('browser-owned routes delegate direct; skills/doctor are CLI-local', () => {
-  for (const command of ['mcp', 'gateway', 'profiles', 'profile-pool', 'launch', 'close', 'quit', 'health', 'call', 'extension-info', 'extension-path', 'bootstrap']) {
+  for (const command of ['mcp', 'gateway', 'profiles', 'profile-pool', 'launch', 'close', 'quit', 'health', 'call', 'extension-info', 'extension-path', 'bootstrap', 'cookies']) {
     assert.equal(ROUTES.get(command).kind, 'browser', command);
   }
   assert.equal(ROUTES.get('project').kind, 'project', 'project splits in the CLI');
