@@ -155,7 +155,7 @@ test('resolvers honour overrides, siblings, packages and typed errors', async (t
   assert.equal(resolveComponentBin('ai', { env: {}, packageRoot: '/nonexistent-root-xyz' }), null);
   const captchaBin = fixtureBin(t);
   assert.equal(resolveCaptchaBin({ env: { WEBMCP_CAPTCHA_BIN: captchaBin }, cwd: '/' }), captchaBin);
-  assert.equal(resolveCaptchaBin({ env: {}, packageRoot: '/nonexistent-root-xyz' }), null);
+  assert.equal(resolveCaptchaBin({ env: { HOME: '/nonexistent-home' }, packageRoot: '/nonexistent-root-xyz' }), null);
   const kitBin = fixtureBin(t);
   assert.equal(resolveProjectKitBin({ env: { WEBMCP_PROJECT_KIT_BIN: kitBin }, cwd: '/tmp' }), kitBin);
   assert.equal(resolveProjectKitBin({ env: {}, packageRoot: '/nonexistent-root-xyz' }), null);

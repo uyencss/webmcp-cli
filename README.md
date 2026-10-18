@@ -30,8 +30,8 @@ without a shell.
 - `project-kit` delegates only to an explicit Project Kit executable when one
   is installed; otherwise it reports component-not-installed and never replaces
   the legacy `project` route.
-- `fleet` (`webmcp fleet [profiles|fingerprint] [--node <id>] [--search <q>] [--mode <mode>] [--json]`)
-  runs locally inside `webmcp-cli` (`lib/commands/fleet.mjs`), scanning Chrome and
+- `fleet` (`webmcp fleet [status|matrix|harmonize] [--node <id>] [--filter <q>] [--mode <mode>] [--json]`)
+  delegates to `@gyga-browser/webmcp-fleet-kit` (`bin/webmcp-fleet.mjs`), scanning Chrome and
   `~/.webmcp/managed-profiles` across Homelab nodes (`local`, `mac-m1`,
   `reup-minipc`, `dell`) and evaluating **Same-OS Host-Aligned Fingerprint
   Decisions (`shouldInjectFingerprint`)** via `@webmcp/fingerprint-kit`.
@@ -41,7 +41,7 @@ without a shell.
 - `WEBMCP_BROWSER_BIN`
 - `WEBMCP_WORKFLOW_DISPATCHER_BIN` (or `WORKFLOW_DISPATCHER_BIN`)
 - `WEBMCP_AI_BIN`, `WEBMCP_STORE_BIN`, `WEBMCP_AUTOMATION_BIN`
-- `WEBMCP_VAULT_BIN`, `WEBMCP_ADB_MCP_BIN`
+- `WEBMCP_VAULT_BIN`, `WEBMCP_FLEET_BIN`, `WEBMCP_ADB_MCP_BIN`
 - `WEBMCP_CAPTCHA_BIN`, `WEBMCP_CAPTCHA_HOME`
 - `WEBMCP_PROJECT_KIT_BIN`
 
