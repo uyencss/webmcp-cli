@@ -38,6 +38,8 @@ const EXPECTED_BASELINE = [
   'extension-info',
   'extension-path',
   'cookies',
+  'usage',
+  'ai-usage',
 ];
 
 test('route table freezes every baseline route/alias plus local help/version and project-kit', () => {
@@ -80,13 +82,16 @@ test('browser-owned routes delegate direct; skills/doctor are CLI-local', () => 
 });
 
 test('component routes resolve explicit executables; store stays a site alias', () => {
-  for (const command of ['workflow', 'ai', 'jev', 'site', 'automation', 'vault', 'fleet', 'mobile', 'adb', 'captcha', 'store']) {
+  for (const command of ['workflow', 'ai', 'jev', 'site', 'automation', 'vault', 'fleet', 'mobile', 'adb', 'captcha', 'store', 'usage', 'ai-usage']) {
     assert.equal(ROUTES.get(command).kind, 'component', command);
   }
   assert.equal(ROUTES.get('store').component, 'site');
   assert.equal(ROUTES.get('jev').component, 'jev');
   assert.equal(ROUTES.get('store').legacyAlias, true);
   assert.equal(ROUTES.get('adb').component, 'mobile');
+  assert.equal(ROUTES.get('usage').component, 'usage');
+  assert.equal(ROUTES.get('ai-usage').component, 'usage');
+  assert.equal(ROUTES.get('ai-usage').aliasOf, 'usage');
   assert.equal(ROUTES.get('project-kit').kind, 'project-kit');
   assert.equal(ROUTES.get('project-kit').optional, true);
 });
