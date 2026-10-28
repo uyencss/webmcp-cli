@@ -394,6 +394,14 @@ test('skills list and doctor resolve checkout-local kit without explicit manifes
   assert.equal(report.schema, 'webmcp-skills-doctor/1');
   assert.equal(report.inventory, checkoutManifest);
   assert.ok(report.total > 0, 'doctor total must be non-empty via checkout inventory');
+
+  const fpSkillPath = spawnIsolated(['path', 'webmcp-fingerprint-kit']);
+  assert.equal(fpSkillPath.status, 0, `skills path webmcp-fingerprint-kit must succeed, stderr: ${fpSkillPath.stderr}`);
+  assert.equal(fpSkillPath.stdout.trim(), path.join(PKG_ROOT, 'skills', 'webmcp-fingerprint-kit'));
+
+  const fpAliasPath = spawnIsolated(['path', 'fingerprint']);
+  assert.equal(fpAliasPath.status, 0, `skills path fingerprint must succeed, stderr: ${fpAliasPath.stderr}`);
+  assert.equal(fpAliasPath.stdout.trim(), path.join(PKG_ROOT, 'skills', 'webmcp-fingerprint-kit'));
 });
 
 test('skills list resolves payload-layout manifest with kit-relative sources', (t) => {
@@ -449,6 +457,33 @@ test('skills list resolves payload-layout manifest with kit-relative sources', (
   assert.equal(spawnedPayload.schema, 'webmcp-skills/1');
   assert.equal(spawnedPayload.inventory, manifestPath);
   assert.ok(spawnedPayload.skills.every((s) => s.available));
+
+  // Payload-layout resolution for bundled CLI fingerprint skill + alias
+  const bundledCliSkillDir = path.join(payloadRoot, 'webmcp-cli', 'skills', 'webmcp-fingerprint-kit');
+  mkdirSync(bundledCliSkillDir, { recursive: true });
+  writeFileSync(path.join(bundledCliSkillDir, 'SKILL.md'), '---\nname: webmcp-fingerprint-kit\n---\n');
+
+  const payloadFpPath = withEnv(env, () => runSkills(['path', 'webmcp-fingerprint-kit']));
+  assert.equal(payloadFpPath.code, 0, payloadFpPath.errors.join('\n'));
+  assert.equal(payloadFpPath.logs.join('\n').trim(), bundledCliSkillDir);
+
+  const payloadFpAlias = withEnv(env, () => runSkills(['path', 'fingerprint']));
+  assert.equal(payloadFpAlias.code, 0, payloadFpAlias.errors.join('\n'));
+  assert.equal(payloadFpAlias.logs.join('\n').trim(), bundledCliSkillDir);
+});
+
+test('fingerprint skill copies stay byte-identical across cli, fingerprint-kit, and webmcp reference', () => {
+  const cliSkill = path.resolve(PKG_ROOT, 'skills', 'webmcp-fingerprint-kit', 'SKILL.md');
+  const kitSkill = path.resolve(PKG_ROOT, '..', 'webmcp-fingerprint-kit', 'skills', 'webmcp-fingerprint-kit', 'SKILL.md');
+  const umbrellaRef = path.resolve(PKG_ROOT, '..', '..', 'skills', 'webmcp', 'references', 'webmcp-fingerprint-kit', 'REFERENCE.md');
+
+  assert.ok(existsSync(cliSkill), `missing ${cliSkill}`);
+  assert.ok(existsSync(kitSkill), `missing ${kitSkill}`);
+  assert.ok(existsSync(umbrellaRef), `missing ${umbrellaRef}`);
+
+  const cliText = readFileSync(cliSkill, 'utf8');
+  assert.equal(readFileSync(kitSkill, 'utf8'), cliText, 'packages/webmcp-fingerprint-kit SKILL.md must match packages/webmcp-cli SKILL.md');
+  assert.equal(readFileSync(umbrellaRef, 'utf8'), cliText, 'skills/webmcp/references/webmcp-fingerprint-kit/REFERENCE.md must match packages/webmcp-cli SKILL.md');
 });
 
 test('browser delegation resolves checkout-local kit end-to-end', (t) => {

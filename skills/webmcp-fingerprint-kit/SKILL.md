@@ -1,13 +1,13 @@
 ---
 name: webmcp-fingerprint-kit
-description: Evaluate Chrome profile fingerprint telemetry, enforce Homelab Anti-Mid-Session-Mutation rules, generate OS-coherent Desktop & Android Mobile Digital Twin blueprints (17 Core + 237 Extended blueprints), validate profiles against the 15-Rule PlausibilityValidator, inject 4-layer Chromium 148/153 stealth (native flags, recursive Worker/OOPIF CDP auto-attach, 10-invariant V8 prototype IIFE), align proxy geo/timezone/locale, generate Firefox/Gecko user.js, and clean Chromium profile caches. Trigger on 'fingerprint', 'webmcp fingerprint', 'fleet fingerprint', 'StealthInjector', 'StealthBrowser', 'CoherentProfileGenerator', 'PlausibilityValidator', 'ExtendedBlueprintRegistry', 'micro-farbling', 'native-clean', 'full-coherent', 'cpp-engine', 'attachCdpToTargets', 'applyProxyGeo', 'cleanProfileTmp', 'generateGeckoUserJs'.
+description: Evaluate Chrome profile fingerprint telemetry, enforce Homelab Anti-Mid-Session-Mutation rules, generate Host-Aligned Same-OS Desktop & Android Mobile Digital Twin profiles, validate profiles with PlausibilityValidator, inject 4-layer Chromium stealth (native flags, recursive Worker/OOPIF CDP auto-attach, V8 prototype IIFE), align proxy geo/timezone/locale, generate Firefox/Gecko user.js, and clean Chromium profile caches. Trigger on 'fingerprint', 'StealthInjector', 'StealthBrowserManager', 'getStealthBrowser', 'CoherentProfileGenerator', 'PlausibilityValidator', 'ExtendedBlueprintRegistry', 'micro-farbling', 'native-clean', 'full-coherent', 'cpp-engine', 'attachCdpToTargets', 'applyProxyGeo', 'cleanProfileTmp', 'generateGeckoUserJs'.
 ---
 
 # WebMCP Fingerprint Kit (`@webmcp/fingerprint-kit` v2.2)
 
-- **Package Root**: `/Users/ttcenter/Desktop/VIBE_CODE/webmcp-automation-kit/packages/webmcp-fingerprint-kit` (`src/index.ts`)
-- **CLI Skill Location**: `/Users/ttcenter/Desktop/VIBE_CODE/webmcp-automation-kit/packages/webmcp-cli/skills/webmcp-fingerprint-kit/SKILL.md` (`webmcp skills path webmcp-fingerprint-kit` or `webmcp skills path fingerprint`)
-- **CLI Commands**:
+- **Canonical Skill Path**: Resolve dynamically on any host via `webmcp skills path webmcp-fingerprint-kit` (or `webmcp skills path fingerprint`).
+- **Package Source**: `packages/webmcp-fingerprint-kit` (`src/index.ts`, built to `dist/index.js`).
+- **CLI Entrypoints**:
   - `webmcp fingerprint [--node <id>] [--mode <mode>] [--search <query>] [--json]`
   - `webmcp fleet fingerprint [--node <id>] [--mode <mode>] [--search <query>] [--json]`
 
@@ -17,15 +17,16 @@ description: Evaluate Chrome profile fingerprint telemetry, enforce Homelab Anti
 
 Homelab cluster nodes (`local`, `mac-m1`, `reup-minipc`, `dell`) run on **100% real physical hardware** (real GPU, audio stack, OS fonts, TCP/IP + TLS JA3/JA4).
 
-`StealthInjector.evaluateProfileDecision(telemetry)` (`src/core/stealth-injector.ts`) enforces the **Anti-Mid-Session Fingerprint Mutation Invariant**: never inject JS fingerprint overrides into a profile that already holds live authenticated session cookies unless that profile was locked to a stealth mode at cold-start creation.
+`StealthInjector.evaluateProfileDecision(input: ProfileTelemetryInput): FingerprintInjectionDecision` (`src/core/stealth-injector.ts`) enforces the **Anti-Mid-Session Fingerprint Mutation Invariant** in strict priority order (`forcedMode` $\rightarrow$ `LOCKED_AT_CREATION` $\rightarrow$ `SKIP_SESSION_BOUND` $\rightarrow$ `INJECT_CPP_ENGINE` $\rightarrow$ `INJECT_FULL_COHERENT` $\rightarrow$ `INJECT_MICRO_FARBLING`):
 
-| Profile State (`ProfileTelemetryInput`) | `shouldInjectFingerprint` | `decisionCode` | `recommendedMode` | Rationale |
-| :--- | :--- | :--- | :--- | :--- |
-| **Live Session Cookies Present** (`platforms.length > 0`, `email`/`gaiaName` present, or `cookieCount > 15`) without creation lock | `false` (`⛔ NO`) | `SKIP_SESSION_BOUND` | `native-clean` | Session cookies (`SID`/`SAPISID`, `c_user`/`xs`, `sessionid`) are bound to the hardware hash recorded at login. Mid-session Canvas/Audio/WebGL mutation triggers **Session Hijacking / Environment Drift** checkpoints. |
-| **Locked at Cold Start** (`fingerprintLockedAtCreation: true` or `lockedMode` in `.webmcp-meta.json` / `.fingerprint-lock.json`) | `true` (`🔒 YES`) | `LOCKED_AT_CREATION` | `lockedMode` | Profile was initialized with this seed and `StealthMode` before first login; maintain the exact seed across the account lifecycle. |
-| **Fresh / Cold-Start Profile** (`cookieCount <= 15`, `platforms = []`) for multi-account social/e-commerce farming | `true` (`✅ YES`) | `INJECT_MICRO_FARBLING` | `micro-farbling` | Isolates Canvas/OffscreenCanvas/Audio hashes per profile + eTLD+1 domain from day zero while preserving 100% native Host OS, GPU, Navigator, Screen, and Fonts. |
-| **Cold-Start Profile on `fingerprint-chromium`** (`cppEngineAvailable: true`) | `true` (`✅ YES`) | `INJECT_CPP_ENGINE` | `cpp-engine` | Passes `--fingerprint=<uint32_seed>` to C++ Blink/Skia with `0B` JS injection. |
-| **Disposable Anonymous Scraping Profile** (`purpose: 'anonymous-scraping'`) | `true` (`✅ YES`) | `INJECT_FULL_COHERENT` | `full-coherent` | Applies full 4-layer stealth (Launch Flags + `TZ` env + 5 CDP Emulation overrides + Worker/OOPIF Auto-Attach + 10-Invariant V8 Stealth IIFE). |
+| Priority | Condition (`ProfileTelemetryInput`) | `shouldInjectFingerprint` | `decisionCode` | `recommendedMode` | Rationale |
+| :--- | :--- | :--- | :--- | :--- | :--- |
+| **1** | `forcedMode` passed via CLI `--mode` | `forcedMode !== 'native-clean'` | `LOCKED_AT_CREATION` / `INJECT_MICRO_FARBLING` / `SKIP_SESSION_BOUND` | `forcedMode` | Explicit operator override (`riskIfInjectedNow: 'CRITICAL_SESSION_INVALIDATION'` if overriding a live session). |
+| **2** | `fingerprintLockedAtCreation: true` or `lockedMode` ($\neq$ `'native-clean'`) in `.webmcp-meta.json` / `.fingerprint-lock.json` | `(lockedMode \|\| 'micro-farbling') !== 'native-clean'` (`🔒 YES`) | `LOCKED_AT_CREATION` | `lockedMode \|\| 'micro-farbling'` | Profile was initialized with this seed and `StealthMode` before first login; maintain the exact seed across the account lifecycle. |
+| **3** | **Live Session Cookies Present** (`platforms.length > 0`, `email`/`gaiaName` present, or `cookieCount > 15`) | `false` (`⛔ NO`) | `SKIP_SESSION_BOUND` | `native-clean` | Session cookies (`SID`/`SAPISID`, `c_user`/`xs`, `sessionid`) are bound to the hardware hash recorded at login. Mid-session Canvas/Audio/WebGL mutation triggers **Session Hijacking / Environment Drift** checkpoints. Overrides `isAnonymousScraping`. |
+| **4** | Cold-start profile (`cookieCount <= 15`) with `hasCustomBinary: true` | `true` (`✅ YES`) | `INJECT_CPP_ENGINE` | `cpp-engine` | Passes `--fingerprint=<uint32_seed>` to C++ Blink/Skia (`adryfish/fingerprint-chromium`) with `0B` JS injection. |
+| **5** | Cold-start profile (`cookieCount <= 15`) with `isAnonymousScraping: true` | `true` (`✅ YES`) | `INJECT_FULL_COHERENT` | `full-coherent` | Applies full 4-layer stealth (Launch Flags + `TZ` env + CDP Emulation overrides + Worker/OOPIF Auto-Attach + V8 Stealth IIFE). |
+| **6** | Default Cold-Start Profile (`cookieCount <= 15`, `platforms = []`) for multi-account social/e-commerce farming | `true` (`✅ YES`) | `INJECT_MICRO_FARBLING` | `micro-farbling` | Isolates Canvas/OffscreenCanvas/Audio hashes per profile + eTLD+1 domain from day zero while preserving 100% native Host OS, GPU, Navigator, Screen, and Fonts. |
 
 ### Cold-Start Profile Lock (`.webmcp-meta.json`)
 
@@ -45,10 +46,10 @@ When creating a new profile in `~/.webmcp/managed-profiles/<slug>/` for multi-ac
 
 | Mode | JS Payload | CDP Commands | Launch Flags & Spawn Env | Primary Use Case |
 | :--- | :--- | :--- | :--- | :--- |
-| `native-clean` | `0 B` | `0` | `--disable-blink-features=AutomationControlled` (+ WebRTC/loopback flags only when `hasProxy: true`); host `TZ` untouched | All live logged-in Chrome profiles (`Chrome:Default`, `Chrome:Profile *`) |
-| `micro-farbling` | `~8 KB` (Canvas/Audio/Iframe guard only) | `0` | Same as `native-clean`; host `TZ` untouched | Multi-account farming (`5–10` FB/TikTok/Douyin/Shopee accounts on 1 host) |
-| `full-coherent` | `~18 KB` (Full 10-invariant V8 IIFE) | `5` + Recursive Worker/OOPIF auto-attach | Native flags + `--window-size` + `--lang` + `TZ=<profile.timezone.id>` | Disposable guest/anonymous scraping or cross-hardware persona emulation |
-| `cpp-engine` | `0 B` | `0` | `--fingerprint=<seed> --fingerprint-platform=<os> --timezone=<tz> --lang=<locale>` + `TZ=<profile.timezone.id>` | `adryfish/fingerprint-chromium` binary |
+| `native-clean` | `0 B` | `0` | `--disable-blink-features=AutomationControlled`, `--disable-features=...`, `--disable-background-timer-throttling` (+ WebRTC/loopback flags only when `hasProxy: true`); host `TZ` untouched | All live logged-in Chrome profiles (`Chrome:Default`, `Chrome:Profile *`) |
+| `micro-farbling` | Canvas/Audio/Iframe guard only (`FULL_SPOOF = false`) | `0` | Same as `native-clean`; host `TZ` untouched | Multi-account farming (`5–10` FB/TikTok/Douyin/Shopee accounts on 1 host) |
+| `full-coherent` | Full V8 Stealth IIFE (`FULL_SPOOF = true`) | `5` base (+ `setTouchEmulationEnabled` on Android + `setGeolocationOverride` when geo set) + Recursive Worker/OOPIF auto-attach | Native flags + `--window-size=<w>,<h>` + `--lang=<locale>` + `TZ=<profile.timezone.id>` | Disposable guest/anonymous scraping or cross-hardware persona emulation |
+| `cpp-engine` | `0 B` | `0` | Native flags + `--window-size` + `--lang` + `--fingerprint=<uint32_seed>` + `--fingerprint-platform=<os>` + `--timezone=<tz>` + `TZ=<profile.timezone.id>` | `adryfish/fingerprint-chromium` binary |
 
 ---
 
@@ -58,51 +59,60 @@ When creating a new profile in `~/.webmcp/managed-profiles/<slug>/` for multi-ac
 
 - `StealthInjector.getNativeLaunchFlags(profile, { mode, hasProxy, extraDisabledFeatures, resourceSaver })`:
   - Always passes `--disable-blink-features=AutomationControlled` (`navigator.webdriver === false` natively in C++ Blink without JS descriptors).
-  - **Conditional Proxy/WebRTC Flags (`hasProxy: true`)**: Emits `--force-webrtc-ip-handling-policy=disable_non_proxied_udp`, `--enforce-webrtc-ip-permission-check`, and `--proxy-bypass-list=<-loopback>` **only** when `hasProxy: true`.
-  - **Resource Saver (`resourceSaver: true`)**: Merges `RESOURCE_SAVER_DISABLED_FEATURES` (`OptimizationHints`, `Translate`, `MediaRouter`, `CalculateNativeWinOcclusion`, `HardwareMediaKeyHandling`) into a single `--disable-features=...` flag and appends `RESOURCE_SAVER_EXTRA_FLAGS` (`--disable-background-timer-throttling`, `--disable-renderer-backgrounding`, `--disable-backgrounding-occluded-windows`, `--disable-ipc-flooding-protection`) to prevent background tab timer/`rAF` throttling.
-- `StealthInjector.getSpawnEnv(profile, mode)`:
-  - Sets `TZ: profile.timezone.id` **only** in `full-coherent` and `cpp-engine` modes so V8 `new Date().getTimezoneOffset()` and `Intl` match CDP `Emulation.setTimezoneOverride`.
+  - Merges `DEFAULT_SAFE_DISABLED_FEATURES` (`Translate`, `OptimizationHints`, `DialMediaRouteProvider`, `InterestFeedContentSuggestions`, `CertificateTransparencyComponentUpdater`, `AutofillServerCommunication`) and, when `resourceSaver !== false`, `RESOURCE_SAVER_DISABLED_FEATURES` (`OptimizationGuideModelExecution`, `OptimizationGuideOnDeviceModel`, `TextSafetyClassifier`) into a **single** `--disable-features=...` flag, plus `RESOURCE_SAVER_LAUNCH_FLAGS` (`--disable-background-timer-throttling`).
+  - Appends `--lang=${profile.navigator.language}` and `--window-size=${profile.screen.width},${profile.screen.height}` **only** when `mode` is `'full-coherent'` or `'cpp-engine'`.
+  - **Conditional Proxy/WebRTC Flags (`hasProxy === true`)**: Appends `--force-webrtc-ip-handling-policy=disable_non_proxied_udp`, `--enforce-webrtc-ip-permission-check`, and `--proxy-bypass-list=<-loopback>` **only** when `hasProxy === true`.
+- `StealthInjector.getSpawnEnv(profile, baseEnv, mode)`:
+  - Sets `TZ: normalizeIanaTimezone(profile.timezone.id)` **only** in `'full-coherent'` and `'cpp-engine'` modes; returns a clean copy of `baseEnv` in `'native-clean'` and `'micro-farbling'`.
 
 ### Layer 1: Native CDP Emulation & Recursive Worker/OOPIF Auto-Attach (`src/core/cdp-target-attacher.ts`)
 
-- `StealthInjector.getCDPEmulationCommands(profile, { mode })`:
-  - Returns 5 C++ Blink CDP overrides in `full-coherent` mode: `Emulation.setUserAgentOverride` (including full `userAgentMetadata` Client Hints: `brands`, `fullVersionList`, `platform`, `platformVersion`, `architecture`, `bitness`, `model`, `mobile`, `wow64`), `Emulation.setHardwareConcurrencyOverride`, `Emulation.setTimezoneOverride`, `Emulation.setLocaleOverride`, and `Emulation.setDeviceMetricsOverride`.
-- `attachCdpToTargets(target, profile, options)`:
+- `StealthInjector.getCDPEmulationCommands(profile)`:
+  - Emits 5 base C++ Blink CDP commands:
+    1. `Emulation.setUserAgentOverride` (with full `userAgentMetadata` Client Hints: `brands`, `fullVersionList`, `platform`, `platformVersion`, `architecture`, `model`, `mobile`, `bitness`, `wow64`)
+    2. `Emulation.setHardwareConcurrencyOverride`
+    3. `Emulation.setTimezoneOverride`
+    4. `Emulation.setLocaleOverride`
+    5. `Emulation.setDeviceMetricsOverride` (automatically sets `mobile: true` and `screenOrientation: { type: 'portraitPrimary', angle: 0 }` when `profile.userAgentData.mobile === true`)
+  - **Android Mobile Touch Emulation**: Automatically appends `Emulation.setTouchEmulationEnabled({ enabled: true, maxTouchPoints: profile.navigator.maxTouchPoints })` when `profile.userAgentData.mobile === true` so mobile blueprints (`os: 'android'`) have coherent touch points and pointer media queries at runtime.
+  - **Geolocation Emulation**: Automatically appends `Emulation.setGeolocationOverride({ latitude, longitude, accuracy })` when `profile.geolocation` is populated (e.g., via `StealthInjector.applyProxyGeo`).
+- `attachCdpToTargets(cdpSession, profile, { mode, injectionOptions, debug })`:
   - Attaches `Target.setAutoAttach({ autoAttach: true, waitForDebuggerOnStart: true, flatten: true })` recursively on both Browser and Page CDP sessions.
-  - Pauses `dedicated_worker`, `shared_worker`, `service_worker`, and cross-origin `iframe` (OOPIF) targets at startup (`waitingForDebugger`), sends `Emulation.setUserAgentOverride` + `Emulation.setHardwareConcurrencyOverride` + `Emulation.setTimezoneOverride` + `Emulation.setLocaleOverride`, and resumes via `Runtime.runIfWaitingForDebugger` **without ever calling `Runtime.enable`**.
-  - Guarantees `self.navigator.userAgent`, `userAgentData`, `hardwareConcurrency`, `language`, `languages`, and `Intl.DateTimeFormat().resolvedOptions().timeZone` inside Workers match `window.navigator` 100%.
+  - Intercepts `worker`, `shared_worker`, `service_worker`, and cross-origin `iframe` (OOPIF) targets while paused (`waitingForDebugger`), applies CDP emulation in `full-coherent` mode and evaluates the V8 stealth IIFE via `Runtime.evaluate` in `micro-farbling`/`full-coherent` modes, and resumes via `Runtime.runIfWaitingForDebugger` (or detaches cleanly if child session resolution is unavailable) — **sending 0 `Runtime.enable` calls**.
 
 ### Layer 2: 10-Invariant V8 Prototype Stealth IIFE (`src/core/v8-stealth-iife.ts`)
 
-Generated via `StealthInjector.buildStealthScript(profile, { mode })` and injected via `Page.addScriptToEvaluateOnNewDocument`:
+Built via `StealthInjector.buildInjectionScript(profile, options)` (`serializeStealthIIFE`) and injected via `Page.addScriptToEvaluateOnNewDocument`:
 
-1. **Zero JS `webdriver` Patch**: Never touches `Navigator.prototype.webdriver` in JS; handled natively by `--disable-blink-features=AutomationControlled`.
-2. **Zero `Window.prototype` Own-Property Leaks**: `Object.getOwnPropertyNames(Window.prototype)` remains `["constructor"]`; `devicePixelRatio` and window dimensions stay on the `window` instance.
-3. **Prototype-less Concise Method Wrappers (`'prototype' in fn === false`)**: All wrapped methods use concise method syntax `{ [name](...args) { ... } }[name]` and register in a cross-realm `WeakMap` so `Function.prototype.toString.call(fn)` returns `"function <name>() { [native code] }"` without leaking own `.prototype` or `.toString` properties.
-4. **WebIDL Enumerability & Brand Check Preservation**: Preserves native `enumerable` flags (`true` on `Navigator`, `Screen`, `GPUAdapterInfo`; `false` on `HTMLIFrameElement.prototype.contentWindow`) and delegates `Illegal invocation` `TypeError` to native C++ getters/methods with spoofed stack frames stripped.
-5. **Cross-Realm `WeakMap` + Non-Enumerable `Symbol.for` Guard**: Prevents `WeakSet` identity loss and double-patching across `about:blank`/`srcdoc` iframes (`patchRealm`), DOM insertions (`appendChild`, `insertBefore`, `replaceChild`, `Element.prototype.append`/`prepend`/`replaceWith`/`after`/`before`, `insertAdjacentElement`, `innerHTML`/`outerHTML`, `insertAdjacentHTML`), and `contentWindow`/`contentDocument` getters.
-6. **WebGL `37445` / `37446` Parameter Discipline**: Overrides only `UNMASKED_VENDOR_WEBGL` (`37445`) and `UNMASKED_RENDERER_WEBGL` (`37446`) on `WebGLRenderingContext.prototype.getParameter` and `WebGL2RenderingContext.prototype.getParameter`.
-7. **WebGPU `GPUAdapterInfo.prototype` Getters**: Patches `vendor`, `architecture`, `device`, `description` on `GPUAdapterInfo.prototype` with `0` instance own properties (`Object.keys(adapter.info).length === 0`).
-8. **Coordinate-Locked Idempotent Canvas 1-LSB Brave Farbling**: Uses deterministic coordinate hash `((x * 73856093) ^ (y * 19349663) ^ domainSeed) >>> 0` (1-in-64 sparse pixel mask) with `dirtyCanvasSet` tracking so repeated `getImageData` / `toDataURL` / `toBlob` / `convertToBlob` reads on an unmodified canvas return bit-identical bytes while sub-rectangle reads match full-canvas slices at `(sx + x, sy + y)`.
-9. **Multi-Channel `AudioBuffer` Farbling + Silent Buffer Preservation**: Farbles `getChannelData` and `copyFromChannel` per channel (`WeakMap<AudioBuffer, Set<number>>`) while skipping all-zero silent buffers (`max(|sample|) === 0`).
-10. **Sub-Pixel `TextMetrics` Width Jitter**: Applies deterministic $\pm 0.02\text{px}$ domain-keyed jitter on `CanvasRenderingContext2D` and `OffscreenCanvasRenderingContext2D` `measureText` via a `Proxy` preserving `metrics instanceof TextMetrics === true`.
+1. **Zero JS `webdriver` Override**: Never defines `Navigator.prototype.webdriver` in JS; handled natively by `--disable-blink-features=AutomationControlled`.
+2. **Cross-Realm `WeakMap` `Function.prototype.toString` Bridge**: Registers wrapped functions in a shared `WeakMap` (`nativeFns`) and uses a non-enumerable `Symbol` probe (`PROBE_SYM`) to delegate cross-realm `Function.prototype.toString.call(iframeFn)` calls without leaking own properties.
+3. **Realm-Bound `Function.prototype` Inheritance**: Ensures `Object.getPrototypeOf(wrappedFn) === win.Function.prototype` inside every patched realm (`window` and child iframes).
+4. **Prototype-less Concise Method Wrappers (`'prototype' in fn === false`) & WebIDL Descriptor Preservation**: Uses concise method syntax `{ [label](...args) { ... } }[label]`, preserves native `origDesc.enumerable` / `origDesc.configurable` flags, and delegates WebIDL brand checks (`Illegal invocation` `TypeError`) to native C++ getters/methods.
+5. **Clean `Window.prototype`**: Defines zero properties on `Window.prototype` (no `devicePixelRatio` or `outerWidth`/`outerHeight` prototype pollution).
+6. **WebGL `37445` / `37446` Parameter Discipline**: Overrides only `UNMASKED_VENDOR_WEBGL` (`37445`) and `UNMASKED_RENDERER_WEBGL` (`37446`) on `WebGLRenderingContext.prototype.getParameter` and `WebGL2RenderingContext.prototype.getParameter` (only when the native call returns non-null), preserving native `VERSION` (`7938`) and `SHADING_LANGUAGE_VERSION` (`35724`).
+7. **Same-Origin Blank Iframe & `window.open` Realm Propagation (`patchRealm`)**: Hooks `HTMLIFrameElement.prototype.contentWindow`/`contentDocument` getters and `window.open`, falling back to `win.origin` for `about:blank`/`srcdoc` frames so blank iframe Canvas hashes match the parent frame.
+8. **Multi-Channel `AudioBuffer` Farbling + Silent Buffer Preservation**: Farbles `getChannelData` and `copyFromChannel` across all channels (`noisedAudioBuffers` `WeakSet`), tracks `copyToChannel`, and skips all-zero silent samples (`chanData[i] !== 0`).
+9. **Coordinate-Locked Idempotent Canvas 1-LSB Brave Farbling**: Applies deterministic coordinate-hashed LSB bit assignment (`data[idx + 2] = (data[idx + 2] & 0xfe) | (hashCoords(seed, domain, sx + x, sy + y) & 1)`) on `getImageData` and offscreen clones for `toDataURL`/`toBlob`/`convertToBlob`, ensuring repeated reads are 100% idempotent and sub-region `getImageData(sx, sy, sw, sh)` aligns with full-canvas reads.
+10. **Native `userAgentData`, `GPUAdapterInfo.prototype` Getters & `WorkerNavigator` Sync**: Leaves `navigator.userAgentData` to native C++ CDP overrides (`0` JS own properties), patches `vendor`/`architecture`/`device`/`description` on `GPUAdapterInfo.prototype` (`0` own properties on `adapter.info`), freezes `navigator.languages` per realm, and patches `WorkerNavigator.prototype` when evaluated inside Workers.
 
-### Layer 3: Blueprints (17 Core + 237 Extended) & 15-Rule `PlausibilityValidator`
+### Layer 3: Hardware Blueprints & 15-Rule `PlausibilityValidator`
 
-- **Core Pool (`poolSize: 'core'`, default)**: 17 curated desktop blueprints (`src/blueprints/blueprint-catalog.ts`) with `0ms` startup cost.
-- **Extended Pool (`poolSize: 'extended'`)**: Lazy-loaded `ExtendedBlueprintRegistry` (`src/blueprints/extended-blueprint-registry.ts`) with **237 blueprints**:
-  - **111 Desktop Blueprints (`macos`, `windows`, `linux`)**: Mapped to exact Dawn PCI GPU architectures (`metal-3`, `ampere`, `ada-lovelace`, `blackwell`, `turing`, `rdna-2`, `rdna-3`, `rdna-4`, `gen-12lp`, `xe-lpg`, `xe-2lpg`, `xe-3lpg`) and OS-pure font catalogs (`src/blueprints/data/extended-fonts.json`).
-  - **126 Android Mobile Digital Twin Blueprints (`os: 'android'`)**: Real device profiles from `mobile-devices.json`, weighted (`weight: 10`) toward **Xiaomi 13 (`2211133G`/`2211133C`, Qualcomm Adreno 740, `360x800`, DPR `3`)** and **Redmi Note 10 (`M2101K7AG`/`M2101K7AI`, Qualcomm Adreno 612, `393x873`, DPR `2.75`)**, plus Xiaomi 12, Redmi Note 8 Pro, Xiaomi 11T, and Redmi K50 Pro.
-- **15-Rule `PlausibilityValidator.validate(profile, { proxyCountry, expectedBrowserMajor })`** (`src/validators/plausibility-validator.ts`):
-  - `R01`–`R13`: GPU/OS/ANGLE/Navigator/ClientHints/WebGPU/Font/Viewport/DPR/Screen/ChromeVersion/Seed coherence (including Android mobile branches in `R03`, `R05`, `R09`, `R11`, `R13`).
-  - `R14` (`Proxy-Timezone Country Match`): Enforces `profile.timezone.country === options.proxyCountry` when `proxyCountry` is supplied.
-  - `R15` (`Locale, Accept-Language & Timezone Region Coherence`): Enforces BCP-47 primary tag coherence between `navigator.language`, `navigator.languages[0]`, `acceptLanguage`, and `timezone.country` (`COUNTRY_TO_GEO_MAP`).
+- **Same-OS Host-Aligned Lock (`src/blueprints/hardware-blueprints.ts`)**:
+  - `CoherentProfileGenerator.detectHostOS()` detects `'macos' | 'linux' | 'windows'` from `process.platform`.
+  - `CoherentProfileGenerator.generate(options)` defaults to `allowCrossPlatform: false`, automatically locking candidate blueprints to `detectHostOS()` unless `options.os` or `options.allowCrossPlatform: true` is explicitly passed.
+  - `CoherentProfileGenerator.generateForNode(nodeId, profileDir, hostOs?, chromeVersion?)` infers the target OS from the cluster node name (`minipc`/`ubuntu`/`linux`/`dell` $\rightarrow$ `'linux'`, `mac` $\rightarrow$ `'macos'`, `win` $\rightarrow$ `'windows'`) and generates a deterministic profile with seed `${nodeId}:${profileDir}`.
+- **Blueprint Pools (`poolSize: 'core' | 'extended'`)**:
+  - **Core Pool (`poolSize: 'core'`, default)**: Curated desktop blueprints (`src/blueprints/blueprint-catalog.ts`) with `0ms` startup cost.
+  - **Extended Pool (`poolSize: 'extended'`)**: Lazy-loaded `ExtendedBlueprintRegistry` (`src/blueprints/extended-blueprint-registry.ts`) containing harvested desktop blueprints (`macos`, `windows`, `linux`) with Dawn PCI GPU architectures (`metal-3`, `ampere`, `ada-lovelace`, `blackwell`, `turing`, `rdna-2/3/4`, `gen-12lp`, `xe-lpg`, `xe-2lpg`, `xe-3lpg`) and OS-pure font catalogs (`src/blueprints/data/extended-fonts.json`), plus Android Mobile Digital Twin blueprints (`os: 'android'`, requires `poolSize: 'extended'`, weighted toward Xiaomi 13 Adreno 740 & Redmi Note 10 Adreno 612). Every extended blueprint is gated by `CoherentProfileGenerator.isBlueprintPlausible(bp)`.
+- **`PlausibilityValidator.validate(profile, options)` (`src/validation/plausibility-validator.ts`)**:
+  - Returns `PlausibilityValidationResult`: `{ isPlausible: boolean, score: number, checkedRules: number, passedRules: number, violations: PlausibilityViolation[] }`.
+  - Validates `R01`–`R13` (GPU/OS/ANGLE/Navigator/ClientHints/WebGPU/Font/Viewport/DPR/Screen/ChromeVersion/Seed coherence, including Android mobile branches in `R03`, `R05`, `R09`, `R11`, `R13`), `R14` (`RULE_14_PROXY_TIMEZONE_COUNTRY_MISMATCH` when `options.proxyCountry` is provided), and `R15` (`RULE_15_LOCALE_HEADER_INTL_INCOHERENCE`).
 
 ---
 
-## 4. Code Recipes for AI Agents
+## 4. Copy-Pasteable Code Recipes for AI Agents
 
-### Recipe A: Generate an OS-Locked Profile + Align Proxy Geo + Validate (15/15 Rules)
+### Recipe A: Host-Aligned Node Profile + Proxy Geo Alignment + 15-Rule Validation
 
 ```ts
 import {
@@ -111,16 +121,18 @@ import {
   PlausibilityValidator,
 } from '@webmcp/fingerprint-kit';
 
-// 1. Generate deterministic profile from Core (17) or Extended (237) pool
+// 1a. Recommended for Fleet nodes: auto-locks OS to node ('local' -> detectHostOS(), 'reup-minipc' -> linux)
+const nodeProfile = CoherentProfileGenerator.generateForNode('reup-minipc', 'Profile 8');
+
+// 1b. Or generate with explicit options (defaults to detectHostOS() when os is omitted)
 const profile = CoherentProfileGenerator.generate({
+  profileId: 'acct-vn-01',
   seed: 'acct-vn-01',
-  os: 'macos',              // 'macos' | 'windows' | 'linux' | 'android'
-  poolSize: 'extended',     // 'core' (default, 17) | 'extended' (237 Desktop + Android)
-  country: 'VN',
-  browserMajor: 148,
+  poolSize: 'extended',     // 'core' (default) | 'extended' (required when os: 'android')
+  chromeVersion: '148',
 });
 
-// 2. If routing through an egress proxy, align timezone + locale + Accept-Language + geolocation
+// 2. Align timezone, navigator.language/languages, Accept-Language & geolocation with egress proxy
 StealthInjector.applyProxyGeo(profile, {
   countryCode: 'JP',
   latitude: 35.6762,
@@ -132,69 +144,82 @@ const report = PlausibilityValidator.validate(profile, {
   proxyCountry: 'JP',
   expectedBrowserMajor: 148,
 });
-if (!report.valid) {
-  throw new Error(`Plausibility failed: ${JSON.stringify(report.errors)}`);
+if (!report.isPlausible) {
+  throw new Error(`Plausibility failed (${report.score}/100): ${JSON.stringify(report.violations)}`);
 }
 ```
 
-### Recipe B: Launch Chromium with `StealthBrowser` (Pipe Transport + Worker/OOPIF Stealth)
+### Recipe B: Launch Chromium via `getStealthBrowser` (Pipe Transport + Worker/OOPIF Stealth)
 
 ```ts
-import puppeteer from 'puppeteer-core';
-import { StealthBrowser } from '@webmcp/fingerprint-kit';
+import { getStealthBrowser } from '@webmcp/fingerprint-kit';
 
-const session = await StealthBrowser.launch(puppeteer, {
+const browser = await getStealthBrowser({
   executablePath: '/Applications/Google Chrome.app/Contents/MacOS/Google Chrome',
-  userDataDir: '/Users/ttcenter/.webmcp/managed-profiles/scraper-01',
-  mode: 'full-coherent',    // 'native-clean' | 'micro-farbling' | 'full-coherent' | 'cpp-engine'
-  seed: 'scraper-01',
-  os: 'macos',
-  poolSize: 'extended',
-  proxyServer: 'socks5://127.0.0.1:1080',
+  userDataDir: '/tmp/webmcp-scraper-01',
+  stealthMode: 'full-coherent',   // 'native-clean' | 'micro-farbling' | 'full-coherent' | 'cpp-engine'
+  hasExistingCookies: false,
+  fingerprintSeed: 'scraper-01',
+  pipe: true,                     // Uses --remote-debugging-pipe (no TCP port 9222)
+  hasProxy: true,
   proxyGeo: { countryCode: 'VN' },
-  resourceSaver: true,      // Disables background timer throttling & unused Chromium services
+  args: ['--proxy-server=socks5://127.0.0.1:1080'],
 });
 
-const page = await session.newStealthPage();
+const [page] = await browser.pages();
 await page.goto('https://abrahamjuliot.github.io/creepjs/');
 ```
 
-### Recipe C: Export Firefox/Gecko `user.js` & Clean Chromium Profile Caches
+### Recipe C: Export Firefox/Gecko `user.js` & Clean Chromium Profile Temp Caches
 
 ```ts
 import {
+  CoherentProfileGenerator,
+  StealthInjector,
   generateGeckoUserJs,
   getGeckoSpawnEnv,
   cleanProfileTmp,
 } from '@webmcp/fingerprint-kit';
 
-// Generate Mozilla Firefox/Camoufox user.js + TZ env from the same FingerprintProfile
-const userJsContent = generateGeckoUserJs(profile, {
-  proxy: { type: 'socks', host: '127.0.0.1', port: 1080, socksVersion: 5, remoteDns: true },
-});
-const geckoEnv = getGeckoSpawnEnv(profile); // { TZ: profile.timezone.id }
+const profile = CoherentProfileGenerator.generate({ profileId: 'gecko-01' });
+StealthInjector.applyProxyGeo(profile, { countryCode: 'VN' });
 
-// Safely clean Chromium transient caches (Crashpad, ShaderCache, GrShaderCache, Code Cache/js)
-// Automatically skips if SingletonLock is held by a live Chrome PID
-const cleanup = cleanProfileTmp('/Users/ttcenter/.webmcp/managed-profiles/scraper-01');
+// 1. Generate standard Firefox user.js (locale, geo data: URL, SOCKS5 remote DNS, WebRTC ICE lock)
+// Note: Does not override general.useragent.override (keeps native Gecko UA coherent with Firefox TLS/JS)
+const userJsContent = generateGeckoUserJs(profile, {
+  proxy: { scheme: 'socks5', host: '127.0.0.1', port: 1080 },
+});
+const geckoEnv = getGeckoSpawnEnv(profile); // { ...process.env, TZ: 'Asia/Ho_Chi_Minh' }
+
+// 2. Safely clean Chromium transient caches (Crashpad, ShaderCache, GrShaderCache) after browser close
+// Automatically checks isChromeProfileInUse(userDataDir) via SingletonLock PID and returns skippedReason: 'in-use' if active
+const cleanup = await cleanProfileTmp('/tmp/webmcp-scraper-01');
+if (cleanup.skippedReason) {
+  console.log('Skipped cleanup:', cleanup.skippedReason);
+} else {
+  console.log('Removed temp dirs:', cleanup.removed);
+}
 ```
 
 ---
 
-## 5. Verification Commands
+## 5. Verification Commands (Checkout Only)
 
-Run these commands to verify `@webmcp/fingerprint-kit` after any blueprint, stealth IIFE, or validator change:
+Run these commands from the `webmcp-automation-kit` checkout root (`cd "$(webmcp skills path webmcp-fingerprint-kit)/../../../.."`):
 
 ```bash
-# 1. Unit, 15-Rule Plausibility (17 Core + 237 Extended blueprints), V8 Stealth, Gecko & Cleanup tests
-npm --prefix /Users/ttcenter/Desktop/VIBE_CODE/webmcp-automation-kit/packages/webmcp-fingerprint-kit test
+# 1. Build TypeScript -> dist/ (required before running fleet/CLI consumers that import dist/)
+npm --prefix packages/webmcp-fingerprint-kit run build
 
-# 2. Real-Chromium Empirical Coherence Suite (20 browser-level invariants across Window, Iframes & Web Workers)
-npm --prefix /Users/ttcenter/Desktop/VIBE_CODE/webmcp-automation-kit/packages/webmcp-fingerprint-kit run verify:empirical
+# 2. Unit, 15-Rule Plausibility (Core + Extended Desktop/Android pools), V8 Stealth, Gecko & Cleanup tests
+npm --prefix packages/webmcp-fingerprint-kit test
 
-# 3. OS Font Cross-Contamination Audit (0 cross-OS font leaks across macOS/Windows/Linux/Android)
-node /Users/ttcenter/Desktop/VIBE_CODE/webmcp-automation-kit/packages/webmcp-fingerprint-kit/scripts/audit-fonts-coherence.mjs
+# 3. Real-Chromium Empirical Coherence Suite (browser-level invariants across Window, Iframes & Web Workers)
+npm --prefix packages/webmcp-fingerprint-kit run verify:empirical
 
-# 4. Fleet Telemetry Fingerprint Decision Audit via WebMCP CLI
+# 4. OS Font Cross-Contamination Audit (0 cross-OS font leaks across macOS/Windows/Linux/Android)
+node packages/webmcp-fingerprint-kit/scripts/audit-fonts-coherence.mjs
+
+# 5. Fleet Telemetry Fingerprint Decision Audit via WebMCP CLI
 webmcp fingerprint --node local
 ```

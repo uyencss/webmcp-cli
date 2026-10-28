@@ -89,6 +89,7 @@ test('every component route resolves its own override and defaults empty args to
     automation: fixtureBin(t),
     vault: fixtureBin(t),
     captcha: fixtureBin(t),
+    fleet: fixtureBin(t),
   };
   const env = {
     WEBMCP_WORKFLOW_DISPATCHER_BIN: bins.workflow,
@@ -97,6 +98,7 @@ test('every component route resolves its own override and defaults empty args to
     WEBMCP_AUTOMATION_BIN: bins.automation,
     WEBMCP_VAULT_BIN: bins.vault,
     WEBMCP_CAPTCHA_BIN: bins.captcha,
+    WEBMCP_FLEET_BIN: bins.fleet,
   };
   const expectations = {
     workflow: { file: bins.workflow, args: ['--help'], useNode: true },
@@ -106,6 +108,8 @@ test('every component route resolves its own override and defaults empty args to
     vault: { file: bins.vault, args: ['--help'], useNode: true },
     captcha: { file: bins.captcha, args: ['--help'], useNode: false },
     store: { file: bins.site, args: ['--help'], useNode: true },
+    fleet: { file: bins.fleet, args: ['--help'], useNode: true },
+    fingerprint: { file: bins.fleet, args: ['fingerprint'], useNode: true },
   };
   for (const [command, expected] of Object.entries(expectations)) {
     const { calls, runChild } = recorder();
@@ -120,6 +124,13 @@ test('every component route resolves its own override and defaults empty args to
   await main(['store', 'list'], { env, runChild });
   assert.equal(calls[0].extraEnv.WEBMCP_SITE_LEGACY_ALIAS, '1');
   assert.match(calls[0].extraEnv.WEBMCP_SITE_COMMAND_NAME, /store/);
+
+  const { calls: fpCalls, runChild: fpRunChild } = recorder();
+  const fpCode = await main(['fingerprint', '--node', 'local', '--json'], { env, runChild: fpRunChild });
+  assert.equal(fpCode, 0);
+  assert.equal(fpCalls.length, 1);
+  assert.equal(fpCalls[0].file, bins.fleet);
+  assert.deepEqual(fpCalls[0].args, ['fingerprint', '--node', 'local', '--json']);
 });
 
 test('mobile/adb validate the subcommand before resolving anything', async (t) => {

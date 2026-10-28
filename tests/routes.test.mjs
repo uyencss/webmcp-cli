@@ -90,6 +90,9 @@ test('component routes resolve explicit executables; store stays a site alias', 
   assert.equal(ROUTES.get('jev').component, 'jev');
   assert.equal(ROUTES.get('store').legacyAlias, true);
   assert.equal(ROUTES.get('adb').component, 'mobile');
+  assert.equal(ROUTES.get('fingerprint').component, 'fleet');
+  assert.equal(ROUTES.get('fingerprint').aliasOf, 'fleet');
+  assert.deepEqual(ROUTES.get('fingerprint').prependArgs, ['fingerprint']);
   assert.equal(ROUTES.get('usage').component, 'usage');
   assert.equal(ROUTES.get('ai-usage').component, 'usage');
   assert.equal(ROUTES.get('ai-usage').aliasOf, 'usage');
