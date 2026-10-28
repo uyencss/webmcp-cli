@@ -110,6 +110,7 @@ test('every component route resolves its own override and defaults empty args to
     store: { file: bins.site, args: ['--help'], useNode: true },
     fleet: { file: bins.fleet, args: ['--help'], useNode: true },
     fingerprint: { file: bins.fleet, args: ['fingerprint'], useNode: true },
+    proxy: { file: bins.fleet, args: ['proxy'], useNode: true },
   };
   for (const [command, expected] of Object.entries(expectations)) {
     const { calls, runChild } = recorder();

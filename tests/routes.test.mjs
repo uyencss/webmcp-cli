@@ -26,6 +26,7 @@ const EXPECTED_BASELINE = [
   'automation',
   'fleet',
   'fingerprint',
+  'proxy',
   'project',
   'mobile',
   'adb',
@@ -83,7 +84,7 @@ test('browser-owned routes delegate direct; skills/doctor are CLI-local', () => 
 });
 
 test('component routes resolve explicit executables; store stays a site alias', () => {
-  for (const command of ['workflow', 'ai', 'jev', 'site', 'automation', 'vault', 'fleet', 'fingerprint', 'mobile', 'adb', 'captcha', 'store', 'usage', 'ai-usage']) {
+  for (const command of ['workflow', 'ai', 'jev', 'site', 'automation', 'vault', 'fleet', 'fingerprint', 'proxy', 'mobile', 'adb', 'captcha', 'store', 'usage', 'ai-usage']) {
     assert.equal(ROUTES.get(command).kind, 'component', command);
   }
   assert.equal(ROUTES.get('store').component, 'site');
@@ -93,6 +94,9 @@ test('component routes resolve explicit executables; store stays a site alias', 
   assert.equal(ROUTES.get('fingerprint').component, 'fleet');
   assert.equal(ROUTES.get('fingerprint').aliasOf, 'fleet');
   assert.deepEqual(ROUTES.get('fingerprint').prependArgs, ['fingerprint']);
+  assert.equal(ROUTES.get('proxy').component, 'fleet');
+  assert.equal(ROUTES.get('proxy').aliasOf, 'fleet');
+  assert.deepEqual(ROUTES.get('proxy').prependArgs, ['proxy']);
   assert.equal(ROUTES.get('usage').component, 'usage');
   assert.equal(ROUTES.get('ai-usage').component, 'usage');
   assert.equal(ROUTES.get('ai-usage').aliasOf, 'usage');
