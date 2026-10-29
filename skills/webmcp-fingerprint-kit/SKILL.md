@@ -1,9 +1,9 @@
 ---
 name: webmcp-fingerprint-kit
-description: Evaluate Chrome profile fingerprint telemetry, enforce Homelab Anti-Mid-Session-Mutation rules, generate Host-Aligned Same-OS Desktop & Android Mobile Digital Twin profiles, validate profiles with PlausibilityValidator, inject 4-layer Chromium stealth (native flags, recursive Worker/OOPIF CDP auto-attach, V8 prototype IIFE), align proxy geo/timezone/locale, generate Firefox/Gecko user.js, and clean Chromium profile caches. Trigger on 'fingerprint', 'StealthInjector', 'StealthBrowserManager', 'getStealthBrowser', 'CoherentProfileGenerator', 'PlausibilityValidator', 'ExtendedBlueprintRegistry', 'micro-farbling', 'native-clean', 'full-coherent', 'cpp-engine', 'attachCdpToTargets', 'applyProxyGeo', 'cleanProfileTmp', 'generateGeckoUserJs'.
+description: Evaluate Chrome profile fingerprint telemetry, enforce Homelab Anti-Mid-Session-Mutation rules, generate Host-Aligned Same-OS Desktop & Android Mobile Digital Twin profiles, validate profiles with PlausibilityValidator, inject 4-layer Chromium stealth (native flags, recursive Worker/OOPIF CDP auto-attach, V8 prototype IIFE), bridge physical Android Chrome via ADB CDP (`src/mobile/`), align proxy geo/timezone/locale, generate Firefox/Gecko user.js, and clean Chromium profile caches. Trigger on 'fingerprint', 'StealthInjector', 'StealthBrowserManager', 'getStealthBrowser', 'CoherentProfileGenerator', 'PlausibilityValidator', 'ExtendedBlueprintRegistry', 'micro-farbling', 'native-clean', 'full-coherent', 'cpp-engine', 'attachCdpToTargets', 'attachCdpToAndroidTargets', 'createMobileStealthPayload', 'forwardAndroidCdpPort', 'writeAndroidChromeFlags', 'backupAndroidChromeSlot', 'restoreAndroidChromeSlot', 'applyProxyGeo', 'cleanProfileTmp', 'generateGeckoUserJs'.
 ---
 
-# WebMCP Fingerprint Kit (`@webmcp/fingerprint-kit` v2.2)
+# WebMCP Fingerprint Kit (`@webmcp/fingerprint-kit` v2.4)
 
 - **Canonical Skill Path**: Resolve dynamically on any host via `webmcp skills path webmcp-fingerprint-kit` (or `webmcp skills path fingerprint`).
 - **Package Source**: `packages/webmcp-fingerprint-kit` (`src/index.ts`, built to `dist/index.js`).
@@ -201,6 +201,43 @@ if (cleanup.skippedReason) {
 }
 ```
 
+### Recipe D: Physical Android Chrome Stealth & ADB CDP Bridge (`src/mobile/`, v2.4)
+
+- **Mode A (`mode: 'native-passthrough'`, default)**: Preserves 100% real Android phone GPU (`Adreno`/`Mali`), screen, `visualViewport`, `screen.orientation`, and native UA/Client Hints (`0` `Emulation.setDeviceMetricsOverride` calls — `T9`; no `screen.orientation` or `ClientRects` hooks — `B6`, `B7`). Applies deterministic `Canvas 2D + WebGL readPixels + AudioBuffer` micro-farbling and generates deterministic `touchProfile` (`radiusX/Y ∈ [10, 20]`, `force ∈ [0.15, 0.85]`) per `seed` (`T18`).
+- **Mode B (`mode: 'mobile-blueprint'`)**: Emits `Emulation.setUserAgentOverride` with full 8+ field `userAgentMetadata` (`T10`) for 4 physical blueprints (`android_xm13_adreno740`, `android_s23_adreno740`, `android_pixel8_malig715`, `android_note10lite_malig72`).
+- **ADB Command-Line & Dynamic Port Forward (`src/mobile/adb-cdp-bridge.ts`)**: Writes `CHROME_CMDLINE_HEADER = '_ '` to `/data/local/tmp/chrome-command-line` (`T2`), verifies `0644` + SELinux `shell_data_file` (`T3`), blocks `--user-data-dir` (`T4`), and allocates collision-free ports via `adb -s <serial> forward tcp:0 localabstract:chrome_devtools_remote` + `GET /json/version` (`T7`, `T20`).
+- **Profile Slot Isolation (`src/mobile/mobile-profile-isolation.ts`)**: Forces `am force-stop` and polls `pidof <pkg>` until completely empty before touching `/data/user/<userId>/<pkg>/app_chrome/Default` (`T6`), with Xiaomi Dual-App `--user 999` validation (`T5`).
+
+```ts
+import {
+  writeAndroidChromeFlags,
+  forwardAndroidCdpPort,
+  restoreAndroidChromeSlot,
+  attachCdpToAndroidTargets,
+} from '@webmcp/fingerprint-kit';
+
+// 1. Restore thin profile slot (<10MB tar.gz, enforces pidof empty hard-gate)
+await restoreAndroidChromeSlot('reup-xm13', '/sdcard/slots/acc-01.tar.gz', {
+  targetPackage: 'com.android.chrome',
+  userId: 0,
+});
+
+// 2. Write '_ --disable-blink-features=AutomationControlled ...' & verify SELinux shell_data_file
+await writeAndroidChromeFlags('reup-xm13', undefined, {
+  targetPackage: 'com.android.chrome',
+  rooted: true,
+});
+
+// 3. Allocate dynamic host TCP port -> localabstract:chrome_devtools_remote & read /json/version
+const cdpInfo = await forwardAndroidCdpPort('reup-xm13');
+
+// 4. Attach Mode A (native-passthrough) stealth to Browser WebSocket session (flatten: true)
+const { payload, detach } = await attachCdpToAndroidTargets(browserWsSession, {
+  mode: 'native-passthrough',
+  seed: 'acc-01-seed',
+});
+```
+
 ---
 
 ## 5. Verification Commands (Checkout Only)
@@ -214,12 +251,15 @@ npm --prefix packages/webmcp-fingerprint-kit run build
 # 2. Unit, 15-Rule Plausibility (Core + Extended Desktop/Android pools), V8 Stealth, Gecko & Cleanup tests
 npm --prefix packages/webmcp-fingerprint-kit test
 
-# 3. Real-Chromium Empirical Coherence Suite (browser-level invariants across Window, Iframes & Web Workers)
+# 3. Mobile Android Chrome Fingerprint & ADB CDP Bridge Unit Suite (T1-T10, T18, T20, B1-B7)
+node --test packages/webmcp-fingerprint-kit/tests/mobile/*.test.ts
+
+# 4. Real-Chromium Empirical Coherence Suite (browser-level invariants across Window, Iframes & Web Workers)
 npm --prefix packages/webmcp-fingerprint-kit run verify:empirical
 
-# 4. OS Font Cross-Contamination Audit (0 cross-OS font leaks across macOS/Windows/Linux/Android)
+# 5. OS Font Cross-Contamination Audit (0 cross-OS font leaks across macOS/Windows/Linux/Android)
 node packages/webmcp-fingerprint-kit/scripts/audit-fonts-coherence.mjs
 
-# 5. Fleet Telemetry Fingerprint Decision Audit via WebMCP CLI
+# 6. Fleet Telemetry Fingerprint Decision Audit via WebMCP CLI
 webmcp fingerprint --node local
 ```
