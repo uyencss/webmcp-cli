@@ -90,6 +90,7 @@ test('every component route resolves its own override and defaults empty args to
     vault: fixtureBin(t),
     captcha: fixtureBin(t),
     fleet: fixtureBin(t),
+    'mobile-cdp': fixtureBin(t),
   };
   const env = {
     WEBMCP_WORKFLOW_DISPATCHER_BIN: bins.workflow,
@@ -99,6 +100,7 @@ test('every component route resolves its own override and defaults empty args to
     WEBMCP_VAULT_BIN: bins.vault,
     WEBMCP_CAPTCHA_BIN: bins.captcha,
     WEBMCP_FLEET_BIN: bins.fleet,
+    WEBMCP_MOBILE_CDP_BIN: bins['mobile-cdp'],
   };
   const expectations = {
     workflow: { file: bins.workflow, args: ['--help'], useNode: true },
@@ -111,6 +113,7 @@ test('every component route resolves its own override and defaults empty args to
     fleet: { file: bins.fleet, args: ['--help'], useNode: true },
     fingerprint: { file: bins.fleet, args: ['fingerprint'], useNode: true },
     proxy: { file: bins.fleet, args: ['proxy'], useNode: true },
+    'mobile-cdp': { file: bins['mobile-cdp'], args: ['--help'], useNode: true },
   };
   for (const [command, expected] of Object.entries(expectations)) {
     const { calls, runChild } = recorder();
@@ -143,6 +146,11 @@ test('mobile/adb validate the subcommand before resolving anything', async (t) =
   const { calls, runChild: runChild2 } = recorder();
   assert.equal(await main(['mobile', 'mcp'], { env: { WEBMCP_ADB_MCP_BIN: adbBin }, runChild: runChild2 }), 0);
   assert.deepEqual(calls[0], { label: 'ADB MCP server', file: adbBin, args: [], useNode: true });
+
+  const cdpBin = fixtureBin(t);
+  const { calls: cdpCalls, runChild: runChild3 } = recorder();
+  assert.equal(await main(['mobile', 'cdp', 'status'], { env: { WEBMCP_MOBILE_CDP_BIN: cdpBin }, runChild: runChild3 }), 0);
+  assert.deepEqual(cdpCalls[0], { label: 'Mobile Chrome CDP CLI', file: cdpBin, args: ['status'], useNode: true });
 });
 
 test('project-kit delegates only when a real executable resolves', async (t) => {
