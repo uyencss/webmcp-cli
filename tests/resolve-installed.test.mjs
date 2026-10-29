@@ -19,6 +19,7 @@ import { PACKAGE_ROOT } from '../lib/help.mjs';
 import {
   browserNotFoundMessage,
   componentNotFoundMessage,
+  INSTALLED_COMPONENTS,
   projectKitNotFoundMessage,
   resolveBrowserBin,
   resolveCaptchaBin,
@@ -529,3 +530,11 @@ test('installed component dir returns realpath for a normal prefix', (t) => {
   assert.ok(existsSync(resolved));
   assert.equal(realpathSync(resolved), resolved, `component dir must be a realpath: ${resolved}`);
 });
+
+test('INSTALLED_COMPONENTS registers mobile-cdp under webmcp-browser-kit', () => {
+  assert.deepEqual(INSTALLED_COMPONENTS['mobile-cdp'], {
+    componentId: 'webmcp-browser-kit',
+    bins: ['webmcp-mobile-cdp'],
+  });
+});
+
