@@ -16,6 +16,7 @@ const EXPECTED_BASELINE = [
   'bootstrap',
   'gateway',
   'profiles',
+  'profile',
   'profile-pool',
   'launch',
   'close',
@@ -76,9 +77,10 @@ test('help/version/unknown stay local; nothing falls through silently', () => {
 });
 
 test('browser-owned routes delegate direct; skills/doctor are CLI-local', () => {
-  for (const command of ['mcp', 'gateway', 'profiles', 'profile-pool', 'launch', 'close', 'quit', 'health', 'call', 'extension-info', 'extension-path', 'bootstrap', 'cookies']) {
+  for (const command of ['mcp', 'gateway', 'profiles', 'profile', 'profile-pool', 'launch', 'close', 'quit', 'health', 'call', 'extension-info', 'extension-path', 'bootstrap', 'cookies']) {
     assert.equal(ROUTES.get(command).kind, 'browser', command);
   }
+  assert.equal(ROUTES.get('profile').aliasOf, 'profiles');
   assert.equal(ROUTES.get('project').kind, 'project', 'project splits in the CLI');
   for (const command of ['skills', 'doctor']) {
     assert.equal(ROUTES.get(command).kind, 'local', command);
